@@ -1,24 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  AstroSuccess,
+  AstroErrorBody,
+  DATE_REGEX,
+  validateDate,
+  daysDiff,
+  isRawOrFits,
+  type ErrorCode,
+} from "@/lib/astro-types";
 
 export const revalidate = 0;
 export const dynamic = "force-dynamic";
 
-// --- Contract types ---
-export interface AstroSuccess {
-  imageUrl: string;
-  title: string;
-  caption: string;
-  source: string;
-  creditedTo: string;
-  actualDate: string;
-  isFallback: boolean;
-  requestedDate: string;
-}
-
-interface AstroErrorBody {
-  error: string;
-  code: string;
-}
+// Re-export the public contract types so existing imports from this module
+// keep working for any consumer still reading from /api/astro's typed surface.
+export type { AstroSuccess, AstroErrorBody, ErrorCode };
 
 // NASA APOD raw shape
 interface ApodResponse {
@@ -51,8 +47,6 @@ interface NasaImagesSearchResponse {
 }
 
 // ---------- helpers ----------
-
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 // --- Rate limit constants ---
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 60 second sliding window
@@ -167,22 +161,7 @@ async function fetchWithTimeout(
   }
 }
 
-function validateDate(date: string): { valid: true; date: string } | { valid: false; error: string; code: string } {
-  if (!DATE_REGEX.test(date)) {
-    return { valid: false, error: "Formato data non valido. Usa YYYY-MM-DD.", code: "INVALID_DATE" };
-  }
-  const d = new Date(date + "T00:00:00Z");
-  if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date) {
-    return { valid: false, error: "Data non valida.", code: "INVALID_DATE" };
-  }
-  // APOD disponibile dal 1995-06-16 — ma per fallback accettiamo anche prima; validazione minima: non futura
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-  if (date > todayStr) {
-    return { valid: false, error: "La data non può essere nel futuro.", code: "INVALID_DATE" };
-  }
-  return { valid: true, date };
-}
+// validateDate, daysDiff, DATE_REGEX, isRawOrFits live in @/lib/astro-types
 
 function getApiKey(): string | null {
   const key = process.env.NASA_API_KEY || (process.env.NODE_ENV === "development" ? "DEMO_KEY" : null);
@@ -205,12 +184,6 @@ function successJson(
 ): NextResponse<AstroSuccess> {
   const res = NextResponse.json(body, { status: 200 });
   return applyRateLimitHeaders(res, rateLimit) as NextResponse<AstroSuccess>;
-}
-
-function daysDiff(a: string, b: string): number {
-  const da = new Date(a + "T00:00:00Z").getTime();
-  const db = new Date(b + "T00:00:00Z").getTime();
-  return Math.abs(da - db) / (1000 * 60 * 60 * 24);
 }
 
 // ---------- fallback logic ----------
@@ -383,8 +356,9 @@ async function handleAstro(
   // 4) se media_type image e url valido -> ritorna APOD
   if (apod.media_type === "image" && (apod.hdurl || apod.url)) {
     const imageUrl = apod.hdurl || apod.url!;
-    // Escludi raw/FITS se per caso — harden: case-insensitive, .fits/.fit
-    if (/\.fits?(\?|#|$)/i.test(imageUrl) || /raw/i.test(imageUrl)) {
+    // Escludi raw/FITS se per caso — usa helper centralizzato per non-match
+    // di falsi positivi tipo "rawr-image.jpg".
+    if (isRawOrFits(imageUrl)) {
       // tratta come non-image -> fallback
     } else {
       const result: AstroSuccess = {
