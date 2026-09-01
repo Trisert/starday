@@ -6,6 +6,7 @@ import {
   validateDate,
   daysDiff,
   isRawOrFits,
+  sanitiseCopyright,
   type ErrorCode,
 } from "@/lib/astro-types";
 
@@ -366,7 +367,7 @@ async function handleAstro(
         title: apod.title,
         caption: (apod.explanation ?? "").slice(0, 300),
         source: "NASA APOD",
-        creditedTo: apod.copyright ?? "NASA",
+        creditedTo: sanitiseCopyright(apod.copyright),
         actualDate: apod.date,
         isFallback: false,
         requestedDate,

@@ -1,23 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-
-// Contratto allineato a /tmp/contract.json
-type AstroSuccess = {
-  imageUrl: string;
-  title: string;
-  caption: string;
-  source: string;
-  creditedTo: string;
-  actualDate: string;
-  isFallback: boolean;
-  requestedDate: string;
-};
-
-type AstroError = {
-  error: string;
-  code?: string;
-};
+import type { AstroSuccess, AstroErrorBody } from "@/lib/astro-types";
 
 const MIN_DATE = "1995-06-16";
 
@@ -37,7 +21,7 @@ function formatDateIT(iso: string): string {
   }
 }
 
-function mapErrorMessage(status: number, body: AstroError | null, date: string): string {
+function mapErrorMessage(status: number, body: AstroErrorBody | null, date: string): string {
   if (body?.error) {
     // messaggi già user-friendly dal server
     if (body.code === "RATE_LIMIT" || status === 429) {
@@ -96,7 +80,7 @@ export default function Home() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        const msg = mapErrorMessage(res.status, json as AstroError | null, date);
+        const msg = mapErrorMessage(res.status, json as AstroErrorBody | null, date);
         setError(msg);
         return;
       }
@@ -105,8 +89,8 @@ export default function Home() {
       if (json && typeof json.imageUrl === "string" && typeof json.title === "string") {
         setImgError(null);
         setData(json as AstroSuccess);
-      } else if (json && (json as AstroError).error) {
-        setError((json as AstroError).error);
+      } else if (json && (json as AstroErrorBody).error) {
+        setError((json as AstroErrorBody).error);
       } else {
         setError("Risposta inattesa dal server. Riprova.");
       }

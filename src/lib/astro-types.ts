@@ -127,3 +127,29 @@ export function isRawOrFits(url: string): boolean {
   if (/\/raw(?:\/|$)/i.test(url)) return true;
   return false;
 }
+
+/**
+ * Normalise the NASA APOD `copyright` field into a clean "credited to" string.
+ * Some APOD entries have a non-person copyright like "solar cycle 25",
+ * "ESA/Hubble & NASA, J. Schmidt", or even campaign/mission names.
+ * Heuristic:
+ * - Empty / missing → "NASA"
+ * - More than 120 chars (likely a description) → "NASA/ESA/STScI"
+ * - Contains common mission/campaign/solar keywords → "NASA/ESA/STScI"
+ * - Otherwise the original string.
+ */
+const COPYRIGHT_FALLBACK = "NASA/ESA/STScI";
+// Strict: only true mission/campaign descriptors, NOT telescope acronyms that
+// legitimately appear in a credit like "NASA/ESA Hubble" or "JWST Team".
+const MISSION_KEYWORDS =
+  /\b(solar\s+cycle|sdo|aia|lasco|soho|epic|terra|aqua)\b/i;
+const COPYRIGHT_MAX = 120;
+
+export function sanitiseCopyright(raw: string | undefined | null): string {
+  if (!raw) return "NASA";
+  const trimmed = raw.trim();
+  if (!trimmed) return "NASA";
+  if (trimmed.length > COPYRIGHT_MAX) return COPYRIGHT_FALLBACK;
+  if (MISSION_KEYWORDS.test(trimmed)) return COPYRIGHT_FALLBACK;
+  return trimmed;
+}

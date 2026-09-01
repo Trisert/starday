@@ -5,6 +5,7 @@ import {
   validateDate,
   daysDiff,
   isRawOrFits,
+  sanitiseCopyright,
   type AstroSuccess,
   type AstroErrorBody,
   type ErrorCode,
@@ -314,5 +315,35 @@ describe("type contracts", () => {
   it("AstroErrorBody shape is assignable", () => {
     const e: AstroErrorBody = { error: "boom", code: "UPSTREAM_ERROR" };
     expect(e.code).toBe("UPSTREAM_ERROR");
+  });
+});
+
+describe("sanitiseCopyright", () => {
+  it("returns 'NASA' for empty / nullish / whitespace input", () => {
+    expect(sanitiseCopyright(undefined)).toBe("NASA");
+    expect(sanitiseCopyright(null)).toBe("NASA");
+    expect(sanitiseCopyright("")).toBe("NASA");
+    expect(sanitiseCopyright("   ")).toBe("NASA");
+  });
+
+  it("returns 'NASA/ESA/STScI' for solar-cycle style strings (real upstream case)", () => {
+    expect(sanitiseCopyright("solar cycle 25")).toBe("NASA/ESA/STScI");
+    expect(sanitiseCopyright("SDO / AIA")).toBe("NASA/ESA/STScI");
+  });
+
+  it("returns 'NASA/ESA/STScI' for too-long strings (likely description)", () => {
+    const long = "x".repeat(121);
+    expect(sanitiseCopyright(long)).toBe("NASA/ESA/STScI");
+  });
+
+  it("passes through clean person-like credits", () => {
+    expect(sanitiseCopyright("J. Schmidt")).toBe("J. Schmidt");
+    expect(sanitiseCopyright("NASA, ESA and the Hubble Heritage Team")).toBe(
+      "NASA, ESA and the Hubble Heritage Team"
+    );
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(sanitiseCopyright("  ESA/Hubble  ")).toBe("ESA/Hubble");
   });
 });
