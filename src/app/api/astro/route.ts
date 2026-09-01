@@ -90,50 +90,45 @@ function daysDiff(a: string, b: string): number {
 
 async function fetchFallback(requestedDate: string): Promise<AstroSuccess | null> {
   const year = requestedDate.slice(0, 4);
-  const url =
-    `https://images-api.nasa.gov/search` +
-    `?q=Hubble%20Space%20Telescope+OR+James%20Webb%20Space%20Telescope` +
-    `&media_type=image` +
-    `&year_start=${year}` +
-    `&year_end=${year}`;
 
-  let res: Response;
-  try {
-    res = await fetch(url, { cache: "no-store" });
-  } catch {
-    return null;
+  // Fix review: +OR+ query returns 1 hit vs 22 with Hubble alone. Parallel fetch Hubble + JWST then merge.
+  const urls = [
+    `https://images-api.nasa.gov/search?q=Hubble%20Space%20Telescope&media_type=image&year_start=${year}&year_end=${year}`,
+    `https://images-api.nasa.gov/search?q=James%20Webb%20Space%20Telescope&media_type=image&year_start=${year}&year_end=${year}`,
+  ];
+
+  let allItems: NasaImagesSearchResponse["collection"]["items"] = [];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) continue;
+      const data = (await res.json()) as NasaImagesSearchResponse;
+      if (data.collection?.items?.length) allItems = allItems.concat(data.collection.items);
+    } catch {
+      continue;
+    }
   }
 
-  if (!res.ok) return null;
+  if (allItems.length === 0) return null;
 
-  let data: NasaImagesSearchResponse;
-  try {
-    data = (await res.json()) as NasaImagesSearchResponse;
-  } catch {
-    return null;
-  }
+  const items = allItems;
 
-  const items = data.collection?.items;
-  if (!items || items.length === 0) return null;
-
-  // Scegli item con date_created più vicino a requestedDate
-  let bestIdx = 0;
+  // Scegli item con date_created più vicino a requestedDate — fix bestIdx null init
+  let best: (typeof items)[number] | null = null;
   let bestDiff = Infinity;
 
   for (let i = 0; i < items.length; i++) {
     const dc = items[i].data?.[0]?.date_created;
     if (!dc) continue;
-    // date_created è ISO datetime es. 2021-03-15T00:00:00Z
     const isoDate = dc.slice(0, 10);
     if (!DATE_REGEX.test(isoDate)) continue;
     const diff = daysDiff(isoDate, requestedDate);
     if (diff < bestDiff) {
       bestDiff = diff;
-      bestIdx = i;
+      best = items[i];
     }
   }
 
-  const best = items[bestIdx];
   if (!best) return null;
 
   const bestData = best.data?.[0];
@@ -240,8 +235,8 @@ async function handleAstro(requestedDate: string): Promise<NextResponse<AstroSuc
   // 4) se media_type image e url valido -> ritorna APOD
   if (apod.media_type === "image" && (apod.hdurl || apod.url)) {
     const imageUrl = apod.hdurl || apod.url!;
-    // Escludi raw/FITS se per caso
-    if (imageUrl.endsWith(".fits") || imageUrl.includes("raw")) {
+    // Escludi raw/FITS se per caso — harden: case-insensitive, .fits/.fit
+    if (/\.fits?(\?|#|$)/i.test(imageUrl) || /raw/i.test(imageUrl)) {
       // tratta come non-image -> fallback
     } else {
       const result: AstroSuccess = {
