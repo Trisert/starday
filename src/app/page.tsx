@@ -61,6 +61,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AstroSuccess | null>(null);
+  const [imgError, setImgError] = useState<string | null>(null);
 
   // validazione live per disabilitare bottone e mostrare hint
   const validationError = useMemo(() => {
@@ -102,6 +103,7 @@ export default function Home() {
 
       // atteso AstroSuccess
       if (json && typeof json.imageUrl === "string" && typeof json.title === "string") {
+        setImgError(null);
         setData(json as AstroSuccess);
       } else if (json && (json as AstroError).error) {
         setError((json as AstroError).error);
@@ -218,17 +220,30 @@ export default function Home() {
 
         {/* Risultato */}
         {data && !loading && (
-          <div className="mt-6 rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden shadow-2xl">
+          <div
+            className="mt-6 rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden shadow-2xl"
+            aria-live="polite"
+          >
             {/* Image */}
             <div className="relative bg-black">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={data.imageUrl}
-                alt={data.title}
-                className="w-full h-auto max-h-[70vh] object-contain mx-auto"
-                loading="eager"
-                referrerPolicy="no-referrer"
-              />
+              {imgError ? (
+                <div
+                  role="alert"
+                  className="w-full min-h-[280px] sm:min-h-[380px] flex items-center justify-center p-6 text-sm text-red-300 bg-red-950/30"
+                >
+                  {imgError}
+                </div>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={data.imageUrl}
+                  alt={data.title}
+                  className="w-full h-auto max-h-[70vh] object-contain mx-auto"
+                  loading="eager"
+                  referrerPolicy="no-referrer"
+                  onError={() => setImgError("Immagine non disponibile")}
+                />
+              )}
             </div>
 
             <div className="p-5 sm:p-7 space-y-4">
@@ -281,7 +296,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (navigator.share) {
+                    if (navigator.share && window.isSecureContext) {
                       navigator
                         .share({
                           title: data.title,
