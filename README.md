@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hubble Compleanno
 
-## Getting Started
+Inserisci la tua data di nascita e scopri quale immagine Hubble/JWST la NASA ha scattato vicino a quel giorno — titolo, descrizione breve e link HD già renderizzato.
 
-First, run the development server:
+## Fonti (in ordine)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Solo due, nessuna altra:
+
+1. **NASA APOD** — `https://api.nasa.gov/planetary/apod?date=YYYY-MM-DD&api_key=NASA_API_KEY` (disponibile dal 1995-06-16, solo `media_type=image`)
+2. **Fallback NASA Images** — `https://images-api.nasa.gov/search?q=Hubble+Space+Telescope+OR+James+Webb+Space+Telescope&media_type=image&year_start=YYYY&year_end=YYYY` — seleziona `date_created` più vicino a `requestedDate`
+
+## Endpoint (contratto)
+
+```
+POST /api/astro  { date: 'YYYY-MM-DD' }
+GET  /api/astro?date=YYYY-MM-DD
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Successo:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```json
+{
+  "imageUrl": "string (URL HD, mai raw/FITS, https)",
+  "title": "string",
+  "caption": "string (max 300 char da explanation)",
+  "source": "NASA APOD | NASA Image Library (Hubble/JWST fallback)",
+  "creditedTo": "string (copyright o NASA/ESA/STScI)",
+  "actualDate": "YYYY-MM-DD",
+  "isFallback": false,
+  "requestedDate": "YYYY-MM-DD"
+}
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Errore:
 
-## Learn More
+```json
+{ "error": "messaggio user-friendly", "code": "INVALID_DATE | RATE_LIMIT | NOT_FOUND | UPSTREAM_ERROR" }
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Configurazione
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### NASA_API_KEY su Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Genera la key su https://api.nasa.gov/
+2. Vercel → Project → Settings → Environment Variables → aggiungi `NASA_API_KEY` (Production + Preview + Development)
+3. Redeploy
 
-## Deploy on Vercel
+> La key resta solo lato server (route `/api/astro`). Mai esporla al client.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### DEMO_KEY
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`DEMO_KEY` solo in sviluppo locale (`NODE_ENV=development`). In produzione serve sempre una key personale, altrimenti 429/403 con retry o messaggio user-friendly.
+
+Locale:
+
+```bash
+echo "NASA_API_KEY=DEMO_KEY" > .env.local  # solo dev
+# oppure
+echo "NASA_API_KEY=la_tua_key_reale" > .env.local
+```
+
+## Stack
+
+Next.js (App Router) + Route Handler `/api/astro` + TypeScript.
+
+## Comandi
+
+```bash
+npm install
+npm run dev    # http://localhost:3000
+npm run build  # build di produzione
+npm start      # avvia build prodotta
+```
+
+## Note immagini
+
+- Solo immagini **già renderizzate** (JPEG/PNG). **Mai** raw, FITS, heatmap o dati scientifici grezzi.
+- `imageUrl` sempre `https` e HD (`hdurl` di APOD o asset NASA Images).
+- APOD video o non-image → passa al fallback.
+- Gestiti 429/403 con retry o messaggio d'errore.
+
+## Deploy su Vercel
+
+1. Push su GitHub
+2. Vercel → Add New Project → Import repository
+3. Imposta `NASA_API_KEY` nelle Environment Variables
+4. Deploy — ogni push su `main` redeploya automaticamente

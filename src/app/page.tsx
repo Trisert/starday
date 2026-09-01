@@ -1,68 +1,321 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useMemo } from "react";
+
+// Contratto allineato a /tmp/contract.json
+type AstroSuccess = {
+  imageUrl: string;
+  title: string;
+  caption: string;
+  source: string;
+  creditedTo: string;
+  actualDate: string;
+  isFallback: boolean;
+  requestedDate: string;
+};
+
+type AstroError = {
+  error: string;
+  code?: string;
+};
+
+const MIN_DATE = "1995-06-16";
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDateIT(iso: string): string {
+  try {
+    return new Date(iso + "T12:00:00").toLocaleDateString("it-IT", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function mapErrorMessage(status: number, body: AstroError | null, date: string): string {
+  if (body?.error) {
+    // messaggi già user-friendly dal server
+    if (body.code === "RATE_LIMIT" || status === 429) {
+      return "Troppe richieste — riprova tra un minuto. (NASA API limite superato)";
+    }
+    return body.error;
+  }
+  if (status === 429) return "Troppe richieste. Attendi qualche secondo e riprova.";
+  if (status === 404) return "Nessuna immagine trovata per questa data. Prova un altro giorno.";
+  if (status === 400) return "Data non valida. Controlla il formato.";
+  if (status >= 500) return "Servizio NASA temporaneamente non disponibile. Riprova più tardi.";
+  // fallback validazione client
+  if (date > todayISO()) return "Non puoi scegliere una data futura.";
+  if (date < MIN_DATE) return "Hubble è in orbita dal 1990, ma l'archivio APOD parte dal 16 giugno 1995.";
+  return "Si è verificato un errore. Riprova.";
+}
 
 export default function Home() {
+  const today = useMemo(() => todayISO(), []);
+  const [date, setDate] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<AstroSuccess | null>(null);
+
+  // validazione live per disabilitare bottone e mostrare hint
+  const validationError = useMemo(() => {
+    if (!date) return null;
+    if (date > today) return "La data non può essere nel futuro.";
+    if (date < MIN_DATE) return "La data deve essere dal 16/06/1995 in poi (primo APOD).";
+    return null;
+  }, [date, today]);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!date) {
+      setError("Seleziona una data.");
+      return;
+    }
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
+    setData(null);
+    try {
+      // Preferiamo GET come da contratto; fallback a POST se servisse
+      const res = await fetch(`/api/astro?date=${encodeURIComponent(date)}`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const msg = mapErrorMessage(res.status, json as AstroError | null, date);
+        setError(msg);
+        return;
+      }
+
+      // atteso AstroSuccess
+      if (json && typeof json.imageUrl === "string" && typeof json.title === "string") {
+        setData(json as AstroSuccess);
+      } else if (json && (json as AstroError).error) {
+        setError((json as AstroError).error);
+      } else {
+        setError("Risposta inattesa dal server. Riprova.");
+      }
+    } catch (err) {
+      // Se API non ancora pronta (404 route, network), messaggio gentile
+      const isNotReady =
+        err instanceof TypeError && String(err.message).toLowerCase().includes("fetch");
+      setError(
+        isNotReady
+          ? "Servizio momentaneamente non disponibile. Riprova tra poco."
+          : "Errore di rete. Controlla la connessione e riprova."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+      {/* Header */}
+      <header className="w-full max-w-3xl mx-auto px-4 sm:px-6 pt-10 pb-6">
+        <p className="text-center text-xs tracking-[0.2em] uppercase text-zinc-500 font-medium">
+          NASA · Hubble · JWST · APOD
+        </p>
+        <h1 className="mt-3 text-center text-[28px] sm:text-[34px] font-bold leading-tight tracking-tight text-zinc-50">
+          Che foto ha scattato Hubble
+          <br className="hidden sm:block" />
+          <span className="sm:hidden"> </span>
+          il giorno in cui sei nato?
+        </h1>
+        <p className="mt-3 text-center text-sm sm:text-[15px] leading-6 text-zinc-400 max-w-xl mx-auto">
+          Inserisci la tua data di nascita e scopri l&apos;immagine del telescopio
+          spaziale del tuo giorno. Archivio dal 16 giugno 1995.
+        </p>
+      </header>
+
+      <main className="w-full max-w-3xl mx-auto px-4 sm:px-6 pb-12 flex-1">
+        {/* Card form */}
+        <div className="rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl p-5 sm:p-7">
+          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+            <label htmlFor="birthdate" className="text-sm font-medium text-zinc-200">
+              La tua data di nascita
+            </label>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <input
+                  id="birthdate"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  min={MIN_DATE}
+                  max={today}
+                  required
+                  aria-describedby="date-hint date-error"
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-700/50 transition"
+                />
+                <p id="date-hint" className="mt-2 text-xs text-zinc-500">
+                  Min 16/06/1995 — Max oggi ({formatDateIT(today)})
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || !!validationError || !date}
+                className="inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-semibold text-zinc-900 shadow hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0 sm:self-start sm:mt-0 min-w-[170px] h-[46px]"
+              >
+                {loading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+                    Caricamento...
+                  </span>
+                ) : (
+                  "Mostra la mia foto"
+                )}
+              </button>
+            </div>
+
+            {validationError && date && !loading && (
+              <p className="text-sm text-amber-400" role="alert">
+                {validationError}
+              </p>
+            )}
+          </form>
+
+          {/* Error */}
+          {error && (
+            <div
+              role="alert"
+              className="mt-5 rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm leading-5 text-red-200"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              {error}
+              {error.toLowerCase().includes("429") || error.toLowerCase().includes("troppe") ? (
+                <p className="mt-1 text-xs text-red-300/80">
+                  Suggerimento: attendi 30-60 secondi e riprova.
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {/* Loading skeleton while fetching */}
+          {loading && (
+            <div className="mt-6 animate-pulse space-y-4" aria-hidden>
+              <div className="h-[280px] sm:h-[380px] rounded-xl bg-zinc-800" />
+              <div className="h-6 w-3/4 rounded bg-zinc-800" />
+              <div className="h-4 w-full rounded bg-zinc-800" />
+              <div className="h-4 w-5/6 rounded bg-zinc-800" />
+            </div>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        {/* Risultato */}
+        {data && !loading && (
+          <div className="mt-6 rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden shadow-2xl">
+            {/* Image */}
+            <div className="relative bg-black">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={data.imageUrl}
+                alt={data.title}
+                className="w-full h-auto max-h-[70vh] object-contain mx-auto"
+                loading="eager"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            <div className="p-5 sm:p-7 space-y-4">
+              {/* Badge + date */}
+              <div className="flex flex-wrap items-center gap-2">
+                {data.isFallback ? (
+                  <span className="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/30 px-3 py-1 text-xs font-medium text-amber-300">
+                    Foto più vicina — {data.actualDate.slice(0, 4)} (fallback)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 text-xs font-medium text-emerald-300">
+                    Data esatta
+                  </span>
+                )}
+                <span className="text-xs text-zinc-500">
+                  Richiesta: {formatDateIT(data.requestedDate)} · Mostrata:{" "}
+                  {formatDateIT(data.actualDate)}
+                </span>
+              </div>
+
+              <h2 className="text-xl sm:text-2xl font-semibold leading-tight text-zinc-50">
+                {data.title}
+              </h2>
+
+              <p className="text-sm sm:text-[15px] leading-6 text-zinc-300">
+                {data.caption}
+              </p>
+
+              <div className="flex flex-col gap-1 pt-2 border-t border-zinc-800 text-xs text-zinc-500">
+                <span>
+                  Fonte: <span className="text-zinc-400">{data.source}</span>
+                </span>
+                <span>
+                  Crediti: <span className="text-zinc-400">{data.creditedTo}</span>
+                </span>
+                <span>
+                  Data immagine: <span className="text-zinc-400">{data.actualDate}</span>
+                </span>
+              </div>
+
+              <div className="pt-3 flex flex-wrap gap-3">
+                <a
+                  href={data.imageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 transition"
+                >
+                  Apri HD
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigator.share) {
+                      navigator
+                        .share({
+                          title: data.title,
+                          text: data.caption,
+                          url: data.imageUrl,
+                        })
+                        .catch(() => {});
+                    } else if (navigator.clipboard) {
+                      navigator.clipboard.writeText(data.imageUrl);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition"
+                >
+                  Condividi
+                </button>
+              </div>
+
+              {data.isFallback && (
+                <p className="text-xs leading-5 text-zinc-500 bg-zinc-950 rounded-xl px-3 py-2 border border-zinc-800">
+                  Per questa data non c&apos;era un&apos;immagine APOD disponibile
+                  (video o dato mancante). Ti mostriamo la foto Hubble/JWST più vicina
+                  dell&apos;anno {data.actualDate.slice(0, 4)} dall&apos;archivio NASA Image Library.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Footer info */}
+        <p className="mt-8 text-center text-xs leading-5 text-zinc-600">
+          Dati da NASA APOD &amp; NASA Image Library. Nessuna chiave API esposta al client.
+          <br />
+          Hubble in orbita dal 1990 · APOD dal 16/06/1995 · JWST dal 2022.
+        </p>
       </main>
     </div>
   );
