@@ -55,8 +55,40 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "Hubble Compleanno",
+    description:
+      "Scopri che foto ha scattato il telescopio Hubble (o JWST) il giorno in cui sei nato.",
+    url: SITE_URL,
+    applicationCategory: "MultimediaApplication",
+    operatingSystem: "Any",
+    inLanguage: "it",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "EUR",
+    },
+    author: {
+      "@type": "Person",
+      name: "Nicola Destro",
+    },
+    provider: {
+      "@type": "Organization",
+      name: "NASA",
+      url: "https://api.nasa.gov",
+    },
+  };
+
   return (
     <html lang="it" className={`${geistSans.variable} h-full antialiased`}>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="min-h-full bg-zinc-950 text-zinc-100 font-sans antialiased">
         {children}
       </body>
