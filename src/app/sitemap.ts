@@ -13,12 +13,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 1.0,
     },
-    {
-      // OG image route is indexable as an image asset
-      url: `${SITE_URL}/api/og`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.4,
-    },
   ];
 }

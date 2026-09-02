@@ -48,62 +48,20 @@ export type ErrorCode =
 export const MIN_APOD_DATE = "1995-06-16";
 
 /**
- * Strict YYYY-MM-DD regex used to validate user-supplied dates.
+ * Minimum year for APOD archive — guard constant for validation helpers.
  */
-export const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+export const MIN_YEAR = 1995;
 
-/**
- * Validate a YYYY-MM-DD date string.
- * Returns `{ valid: true, date }` on success, otherwise an Italian-localized
- * error message plus a stable ErrorCode.
- *
- * Rules:
- * - Format must match YYYY-MM-DD.
- * - Must be a real calendar date (e.g. 2024-02-30 is rejected).
- * - Must not be in the future (relative to UTC "today").
- *
- * Note: dates before MIN_APOD_DATE are accepted here — the route tries the
- * NASA Image Library fallback for older dates. The client form enforces the
- * min separately via the input's `min` attribute.
- */
-export function validateDate(
-  date: string
-): { valid: true; date: string } | { valid: false; error: string; code: ErrorCode } {
-  if (!DATE_REGEX.test(date)) {
-    return {
-      valid: false,
-      error: "Formato data non valido. Usa YYYY-MM-DD.",
-      code: "INVALID_DATE",
-    };
-  }
-  const d = new Date(date + "T00:00:00Z");
-  if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date) {
-    return { valid: false, error: "Data non valida.", code: "INVALID_DATE" };
-  }
-  // Non-future check (UTC).
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-  if (date > todayStr) {
-    return {
-      valid: false,
-      error: "La data non può essere nel futuro.",
-      code: "INVALID_DATE",
-    };
-  }
-  return { valid: true, date };
-}
-
-/**
- * Absolute day difference between two YYYY-MM-DD strings.
- * Uses UTC midnight anchors to avoid DST drift. Returned as a number of
- * whole days (may be fractional if inputs cross a DST boundary — callers
- * compare with `<` so non-integer results still rank correctly).
- */
-export function daysDiff(a: string, b: string): number {
-  const da = new Date(a + "T00:00:00Z").getTime();
-  const db = new Date(b + "T00:00:00Z").getTime();
-  return Math.abs(da - db) / (1000 * 60 * 60 * 24);
-}
+// Centralized date helpers — single source of truth lives in ./date, re-exported here for backwards compat
+// (route.ts and other consumers import from @/lib/astro-types).
+export {
+  DATE_REGEX,
+  todayUtcString,
+  isPastDate,
+  daysDiff,
+  validateDate,
+  formatItalianDate,
+} from "./date";
 
 /**
  * Detect whether a URL points to a raw or FITS asset that the browser can't
@@ -136,7 +94,7 @@ export function isRawOrFits(url: string): boolean {
  * - Empty / missing → "NASA"
  * - More than 120 chars (likely a description) → "NASA/ESA/STScI"
  * - Contains common mission/campaign/solar keywords → "NASA/ESA/STScI"
- * - Otherwise the original string.
+ * - Otherwise the original string, HTML-escaped.
  */
 const COPYRIGHT_FALLBACK = "NASA/ESA/STScI";
 // Strict: only true mission/campaign descriptors, NOT telescope acronyms that
@@ -145,11 +103,20 @@ const MISSION_KEYWORDS =
   /\b(solar\s+cycle|sdo|aia|lasco|soho|epic|terra|aqua)\b/i;
 const COPYRIGHT_MAX = 120;
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function sanitiseCopyright(raw: string | undefined | null): string {
   if (!raw) return "NASA";
   const trimmed = raw.trim();
   if (!trimmed) return "NASA";
   if (trimmed.length > COPYRIGHT_MAX) return COPYRIGHT_FALLBACK;
   if (MISSION_KEYWORDS.test(trimmed)) return COPYRIGHT_FALLBACK;
-  return trimmed;
+  return escapeHtml(trimmed);
 }

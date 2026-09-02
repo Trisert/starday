@@ -1,3 +1,8 @@
 {
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "functions": {
+    "src/app/api/astro/route.ts": {
+      "maxDuration": 10
+    }
+  }
 }

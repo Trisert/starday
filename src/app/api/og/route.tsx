@@ -1,57 +1,23 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
+import { DATE_REGEX, validateDate, formatItalianDate } from "@/lib/astro-types";
+import { todayUtcString } from "@/lib/date";
 
 // Cache the rendered image for 24 hours (per OG route revalidate spec).
 export const revalidate = 86400;
 
-// --- Date helpers ---
-
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+// --- Date helpers (centralized in @/lib/date & @/lib/astro-types) ---
 
 /**
  * Validate a YYYY-MM-DD string. Returns the canonical date on success or `null`
  * for any failure (bad format, invalid calendar date, future date).
+ * Delegates to centralized validateDate helper.
  */
 function parseDate(raw: string | null): string | null {
-  if (!raw || !DATE_REGEX.test(raw)) return null;
-  const d = new Date(`${raw}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return null;
-  if (d.toISOString().slice(0, 10) !== raw) return null;
-  const today = new Date().toISOString().slice(0, 10);
-  if (raw > today) return null;
-  return raw;
-}
-
-/**
- * Format a YYYY-MM-DD string as a long Italian date (e.g. "15 aprile 1990").
- * Falls back to the original string on any error.
- */
-function formatItalianDate(iso: string): string {
-  try {
-    const [yStr, mStr, dStr] = iso.split("-");
-    const y = Number(yStr);
-    const m = Number(mStr);
-    const d = Number(dStr);
-    const months = [
-      "gennaio",
-      "febbraio",
-      "marzo",
-      "aprile",
-      "maggio",
-      "giugno",
-      "luglio",
-      "agosto",
-      "settembre",
-      "ottobre",
-      "novembre",
-      "dicembre",
-    ];
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return iso;
-    if (m < 1 || m > 12) return iso;
-    return `${d} ${months[m - 1]} ${y}`;
-  } catch {
-    return iso;
-  }
+  if (!raw) return null;
+  if (!DATE_REGEX.test(raw)) return null;
+  const v = validateDate(raw);
+  return v.valid ? v.date : null;
 }
 
 // --- Star field ---
@@ -108,7 +74,7 @@ function buildStars(date: string): Star[] {
 export async function GET(request: NextRequest): Promise<Response> {
   const raw = request.nextUrl.searchParams.get("date");
   const validDate = parseDate(raw);
-  const date = validDate ?? new Date().toISOString().slice(0, 10);
+  const date = validDate ?? todayUtcString();
   const dateLong = formatItalianDate(date);
   const stars = buildStars(date);
 
