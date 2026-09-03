@@ -31,22 +31,22 @@ describe("Home page", () => {
 
   it("renders form with min/max and disabled submit initially", () => {
     render(<Home />);
-    const input = screen.getByLabelText(/la tua data di nascita/i) as HTMLInputElement;
+    const input = screen.getByLabelText(/your birthdate/i) as HTMLInputElement;
     expect(input).toBeInTheDocument();
     expect(input.min).toBe("1995-06-16");
     expect(input.max).toBe("2024-06-15");
     expect(input.required).toBe(true);
-    const button = screen.getByRole("button", { name: /mostra la mia foto/i });
+    const button = screen.getByRole("button", { name: /show my photo/i });
     expect(button).toBeDisabled();
-    expect(screen.getByText(/Min 16\/06\/1995 — Max oggi/i)).toBeInTheDocument();
+    expect(screen.getByText(/Min 06\/16\/1995 — Max today/i)).toBeInTheDocument();
   });
 
   it("shows validationError for future date and keeps button disabled", () => {
     render(<Home />);
-    const input = screen.getByLabelText(/la tua data di nascita/i) as HTMLInputElement;
+    const input = screen.getByLabelText(/your birthdate/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "2024-06-16" } });
     expect(screen.getByText(/la data non può essere nel futuro/i)).toBeInTheDocument();
-    const button = screen.getByRole("button", { name: /mostra la mia foto/i });
+    const button = screen.getByRole("button", { name: /show my photo/i });
     expect(button).toBeDisabled();
   });
 
@@ -69,8 +69,8 @@ describe("Home page", () => {
     vi.stubGlobal("fetch", fetchMock as any);
 
     render(<Home />);
-    const input = screen.getByLabelText(/la tua data di nascita/i) as HTMLInputElement;
-    const button = screen.getByRole("button", { name: /mostra la mia foto/i });
+    const input = screen.getByLabelText(/your birthdate/i) as HTMLInputElement;
+    const button = screen.getByRole("button", { name: /show my photo/i });
 
     fireEvent.change(input, { target: { value: "2024-01-15" } });
     expect(button).not.toBeDisabled();

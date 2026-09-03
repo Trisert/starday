@@ -1,6 +1,6 @@
-# Hubble Compleanno
+# StarDay
 
-Inserisci la tua data di nascita e scopri quale immagine Hubble/JWST la NASA ha scattato vicino a quel giorno — titolo, descrizione breve e link HD già renderizzato.
+What photo did Hubble take on the day you were born? Enter your birthdate and discover the Hubble/JWST image NASA captured around that day — title, short caption and HD link.
 
 ## Fonti (in ordine)
 

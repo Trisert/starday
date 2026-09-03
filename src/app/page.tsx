@@ -164,7 +164,7 @@ export default function Home() {
       const pathname = window.location.pathname;
       return `${origin}${pathname}?date=${encodeURIComponent(targetDate)}`;
     } catch {
-      return `https://hubble-compleanno.vercel.app?date=${encodeURIComponent(targetDate)}`;
+      return `https://starday.vercel.app?date=${encodeURIComponent(targetDate)}`;
     }
   }
 
@@ -200,14 +200,14 @@ export default function Home() {
           NASA · Hubble · JWST · APOD
         </p>
         <h1 className="mt-3 text-center text-[28px] sm:text-[34px] font-bold leading-tight tracking-tight text-zinc-50">
-          Che foto ha scattato Hubble
+          What photo did Hubble take
           <br className="hidden sm:block" />
           <span className="sm:hidden"> </span>
-          il giorno in cui sei nato?
+          on the day you were born?
         </h1>
         <p className="mt-3 text-center text-sm sm:text-[15px] leading-6 text-zinc-400 max-w-xl mx-auto">
-          Inserisci la tua data di nascita e scopri l&apos;immagine del telescopio
-          spaziale del tuo giorno. Archivio dal 16 giugno 1995.
+          Enter your birthdate and discover the space
+          telescope image from your day. Archive since June 16, 1995.
         </p>
       </header>
 
@@ -216,7 +216,7 @@ export default function Home() {
         <div className="rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl p-5 sm:p-7">
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
             <label htmlFor="birthdate" className="text-sm font-medium text-zinc-200">
-              La tua data di nascita
+              Your birthdate
             </label>
 
             <div className="flex flex-col sm:flex-row gap-3">
@@ -237,7 +237,7 @@ export default function Home() {
                   className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-700/50 transition"
                 />
                 <p id="date-hint" className="mt-2 text-xs text-zinc-400">
-                  Min 16/06/1995 — Max oggi ({formatDateIT(today)})
+                  Min 06/16/1995 — Max today ({formatDateIT(today)})
                 </p>
               </div>
 
@@ -249,10 +249,10 @@ export default function Home() {
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
-                    Caricamento...
+                    Loading...
                   </span>
                 ) : (
-                  "Mostra la mia foto"
+                  "Show my photo"
                 )}
               </button>
             </div>

@@ -252,7 +252,7 @@ export async function GET(request: NextRequest): Promise<Response> {
               letterSpacing: "1px",
             }}
           >
-            <div style={{ display: "flex" }}>hubble-compleanno.vercel.app</div>
+            <div style={{ display: "flex" }}>starday.vercel.app</div>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <span style={{ display: "flex" }}>ESA</span>
               <span style={{ display: "flex", color: "#52525b" }}>·</span>

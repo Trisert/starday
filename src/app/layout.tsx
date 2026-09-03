@@ -8,14 +8,14 @@ const geistSans = Geist({
 });
 
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hubble-compleanno.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://starday.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Che foto ha scattato Hubble il giorno in cui sei nato?",
+  title: "StarDay — What photo did Hubble take on the day you were born?",
   description:
-    "Scopri che foto ha scattato il telescopio Hubble (o JWST) il giorno in cui sei nato. Inserisci la tua data di nascita e guarda l'immagine NASA del giorno.",
-  keywords: ["hubble", "nasa", "apod", "jwst", "compleanno", "astronomia"],
+    "Discover the Hubble (or JWST) photo from your birthday. Enter your birthdate and see the NASA image of the day.",
+  keywords: ["starday", "hubble", "nasa", "apod", "jwst", "birthday", "astronomy"],
   authors: [{ name: "Nicola Destro" }],
   alternates: {
     canonical: "/",
@@ -25,27 +25,27 @@ export const metadata: Metadata = {
     follow: true,
   },
   openGraph: {
-    title: "Che foto ha scattato Hubble il giorno in cui sei nato?",
+    title: "StarDay — What photo did Hubble take on your birthday?",
     description:
-      "Inserisci la tua data di nascita e scopri l'immagine Hubble/NASA del tuo compleanno.",
+      "Enter your birthdate and discover the Hubble/NASA image of your birthday.",
     type: "website",
-    locale: "it_IT",
-    siteName: "Hubble Compleanno",
+    locale: "en_US",
+    siteName: "StarDay",
     url: "/",
     images: [
       {
         url: "/api/og",
         width: 1200,
         height: 630,
-        alt: "Hubble Compleanno — la foto NASA del giorno in cui sei nato",
+        alt: "StarDay — the NASA photo from the day you were born",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Che foto ha scattato Hubble il giorno in cui sei nato?",
+    title: "StarDay — What photo did Hubble take on your birthday?",
     description:
-      "Inserisci la tua data di nascita e scopri l'immagine Hubble/NASA del tuo compleanno.",
+      "Enter your birthdate and discover the Hubble/NASA image of your birthday.",
     images: ["/api/og"],
   },
 };
@@ -58,13 +58,13 @@ export default function RootLayout({
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    name: "Hubble Compleanno",
+    name: "StarDay",
     description:
-      "Scopri che foto ha scattato il telescopio Hubble (o JWST) il giorno in cui sei nato.",
+      "Discover the Hubble (or JWST) photo from the day you were born.",
     url: SITE_URL,
     applicationCategory: "MultimediaApplication",
     operatingSystem: "Any",
-    inLanguage: "it",
+    inLanguage: "en",
     offers: {
       "@type": "Offer",
       price: "0",
@@ -82,7 +82,7 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="it" className={`${geistSans.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
       <head>
         <script
           type="application/ld+json"
