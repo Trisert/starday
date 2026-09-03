@@ -10,9 +10,9 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatDateIT(iso: string): string {
+function formatDateEN(iso: string): string {
   try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("it-IT", {
+    return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
       day: "numeric",
       month: "long",
       year: "numeric",
@@ -24,25 +24,40 @@ function formatDateIT(iso: string): string {
 
 function mapErrorMessage(status: number, body: AstroErrorBody | null, date: string): string {
   if (body?.error) {
-    // messaggi già user-friendly dal server
+    // server messages are already user-friendly
     if (body.code === "RATE_LIMIT" || status === 429) {
-      return "Troppe richieste — riprova tra un minuto. (NASA API limite superato)";
+      return "Too many requests — try again in a minute. (NASA API limit reached)";
     }
     return body.error;
   }
-  if (status === 429) return "Troppe richieste. Attendi qualche secondo e riprova.";
-  if (status === 404) return "Nessuna immagine trovata per questa data. Prova un altro giorno.";
-  if (status === 400) return "Data non valida. Controlla il formato.";
-  if (status >= 500) return "Servizio NASA temporaneamente non disponibile. Riprova più tardi.";
-  // fallback validazione client
-  if (date > todayISO()) return "Non puoi scegliere una data futura.";
-  if (date < MIN_DATE) return "Hubble è in orbita dal 1990, ma l'archivio APOD parte dal 16 giugno 1995.";
-  return "Si è verificato un errore. Riprova.";
+  if (status === 429) return "Too many requests. Wait a few seconds and try again.";
+  if (status === 404) return "No image found for this date. Try another day.";
+  if (status === 400) return "Invalid date. Check the format.";
+  if (status >= 500) return "NASA service temporarily unavailable. Try again later.";
+  // client-side validation fallback
+  if (date > todayISO()) return "You cannot pick a future date.";
+  if (date < MIN_DATE) return "Hubble has been in orbit since 1990, but the APOD archive starts on June 16, 1995.";
+  return "Something went wrong. Try again.";
+}
+
+// Deep-link: seed the initial date from ?date= during state init (not in an
+// effect, so there is no setState-in-effect cascade). Invalid/absent param -> "".
+function initialDateFromUrl(): string {
+  try {
+    if (typeof window === "undefined") return "";
+    const params = new URLSearchParams(window.location.search);
+    const d = params.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (d >= MIN_DATE && d <= todayStr) return d;
+    }
+  } catch {}
+  return "";
 }
 
 export default function Home() {
   const today = useMemo(() => todayISO(), []);
-  const [date, setDate] = useState<string>("");
+  const [date, setDate] = useState<string>(initialDateFromUrl);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AstroSuccess | null>(null);
@@ -50,26 +65,26 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
-  // validazione live per disabilitare bottone e mostrare hint
+  // live validation to disable the button and show a hint
   const validationError = useMemo(() => {
     if (!date) return null;
-    if (date > today) return "La data non può essere nel futuro.";
-    if (date < MIN_DATE) return "La data deve essere dal 16/06/1995 in poi (primo APOD).";
+    if (date > today) return "Date cannot be in the future.";
+    if (date < MIN_DATE) return "Date must be from 06/16/1995 onwards (first APOD).";
     return null;
   }, [date, today]);
 
   async function fetchData(targetDate: string) {
     setError(null);
     if (!targetDate) {
-      setError("Seleziona una data.");
+      setError("Select a date.");
       return;
     }
     if (targetDate > today) {
-      setError("La data non può essere nel futuro.");
+      setError("Date cannot be in the future.");
       return;
     }
     if (targetDate < MIN_DATE) {
-      setError("La data deve essere dal 16/06/1995 in poi (primo APOD).");
+      setError("Date must be from 06/16/1995 onwards (first APOD).");
       return;
     }
 
@@ -102,15 +117,15 @@ export default function Home() {
       } else if (json && (json as AstroErrorBody).error) {
         setError((json as AstroErrorBody).error);
       } else {
-        setError("Risposta inattesa dal server. Riprova.");
+        setError("Unexpected server response. Try again.");
       }
     } catch (err) {
       const isNotReady =
         err instanceof TypeError && String(err.message).toLowerCase().includes("fetch");
       setError(
         isNotReady
-          ? "Servizio momentaneamente non disponibile. Riprova tra poco."
-          : "Errore di rete. Controlla la connessione e riprova."
+          ? "Service temporarily unavailable. Try again shortly."
+          : "Network error. Check your connection and try again."
       );
     } finally {
       setLoading(false);
@@ -122,20 +137,11 @@ export default function Home() {
     await fetchData(date);
   }
 
-  // deep-link: leggi searchParams ?date= al mount
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const d = params.get("date");
-      if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-        const todayStr = todayISO();
-        if (d >= MIN_DATE && d <= todayStr) {
-          setDate(d);
-          fetchData(d);
-        }
-      }
-    } catch {}
+    if (date) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount sync: URL ?date= -> fetch
+      void fetchData(date);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -178,17 +184,17 @@ export default function Home() {
           text: data.caption,
           url: shareUrl,
         });
-        showToast("Link copiato!");
+        showToast("Link copied!");
       } catch {}
     } else if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(shareUrl);
-        showToast("Link copiato!");
+        showToast("Link copied!");
       } catch {
-        showToast("Link copiato!");
+        showToast("Link copied!");
       }
     } else {
-      showToast("Link copiato!");
+      showToast("Link copied!");
     }
   }
 
@@ -237,7 +243,7 @@ export default function Home() {
                   className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-700/50 transition"
                 />
                 <p id="date-hint" className="mt-2 text-xs text-zinc-400">
-                  Min 06/16/1995 — Max today ({formatDateIT(today)})
+                  Min 06/16/1995 — Max today ({formatDateEN(today)})
                 </p>
               </div>
 
@@ -266,14 +272,14 @@ export default function Home() {
           {/* Error */}
           {error && (
             <div
-              id="date-error"
+              id="server-error"
               role="alert"
               className="mt-5 rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm leading-5 text-red-200"
             >
               {error}
-              {error.toLowerCase().includes("429") || error.toLowerCase().includes("troppe") ? (
+              {error.toLowerCase().includes("429") || error.toLowerCase().includes("too many") ? (
                 <p className="mt-1 text-xs text-red-300/80">
-                  Suggerimento: attendi 30-60 secondi e riprova.
+                  Tip: wait 30-60 seconds and try again.
                 </p>
               ) : null}
             </div>
@@ -322,7 +328,7 @@ export default function Home() {
                   priority
                   placeholder="empty"
                   referrerPolicy="no-referrer"
-                  onError={() => setImgError("Immagine non disponibile")}
+                  onError={() => setImgError("Image unavailable")}
                 />
               )}
             </div>
@@ -336,12 +342,12 @@ export default function Home() {
                   </span>
                 ) : (
                   <span className="inline-flex items-center rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 text-xs font-medium text-emerald-300">
-                    Data esatta
+                    Exact date
                   </span>
                 )}
                 <span className="text-xs text-zinc-400">
-                  Richiesta: {formatDateIT(data.requestedDate)} · Mostrata:{" "}
-                  {formatDateIT(data.actualDate)}
+                  Requested: {formatDateEN(data.requestedDate)} · Shown:{" "}
+                  {formatDateEN(data.actualDate)}
                 </span>
               </div>
 
@@ -355,13 +361,13 @@ export default function Home() {
 
               <div className="flex flex-col gap-1 pt-2 border-t border-zinc-800 text-xs text-zinc-400">
                 <span>
-                  Fonte: <span className="text-zinc-300">{data.source}</span>
+                  Source: <span className="text-zinc-300">{data.source}</span>
                 </span>
                 <span>
-                  Crediti: <span className="text-zinc-300">{data.creditedTo}</span>
+                  Credits: <span className="text-zinc-300">{data.creditedTo}</span>
                 </span>
                 <span>
-                  Data immagine: <span className="text-zinc-300">{data.actualDate}</span>
+                  Image date: <span className="text-zinc-300">{data.actualDate}</span>
                 </span>
               </div>
 
@@ -372,22 +378,22 @@ export default function Home() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 transition"
                 >
-                  Apri HD
+                  Open HD
                 </a>
                 <button
                   type="button"
                   onClick={handleShare}
                   className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition"
                 >
-                  Condividi
+                  Share
                 </button>
               </div>
 
               {data.isFallback && (
                 <p className="text-xs leading-5 text-zinc-400 bg-zinc-950 rounded-xl px-3 py-2 border border-zinc-800">
-                  Per questa data non c&apos;era un&apos;immagine APOD disponibile
-                  (video o dato mancante). Ti mostriamo la foto Hubble/JWST più vicina
-                  dell&apos;anno {data.actualDate.slice(0, 4)} dall&apos;archivio NASA Image Library.
+                  No APOD image was available for this date
+                  (video or missing data). Showing the closest Hubble/JWST photo
+                  from {data.actualDate.slice(0, 4)} in the NASA Image Library archive.
                 </p>
               )}
             </div>
@@ -396,9 +402,9 @@ export default function Home() {
 
         {/* Footer info */}
         <p className="mt-8 text-center text-xs leading-5 text-zinc-500">
-          Dati da NASA APOD &amp; NASA Image Library. Nessuna chiave API esposta al client.
+          Data from NASA APOD &amp; NASA Image Library. No API key exposed to the client.
           <br />
-          Hubble in orbita dal 1990 · APOD dal 16/06/1995 · JWST dal 2022.
+          Hubble in orbit since 1990 · APOD since 06/16/1995 · JWST since 2022.
         </p>
       </main>
 

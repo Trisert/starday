@@ -45,7 +45,7 @@ describe("Home page", () => {
     render(<Home />);
     const input = screen.getByLabelText(/your birthdate/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "2024-06-16" } });
-    expect(screen.getByText(/la data non può essere nel futuro/i)).toBeInTheDocument();
+    expect(screen.getByText(/date cannot be in the future/i)).toBeInTheDocument();
     const button = screen.getByRole("button", { name: /show my photo/i });
     expect(button).toBeDisabled();
   });

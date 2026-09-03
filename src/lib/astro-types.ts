@@ -61,6 +61,7 @@ export {
   daysDiff,
   validateDate,
   formatItalianDate,
+  formatDisplayDate,
 } from "./date";
 
 /**

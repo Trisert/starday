@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
-import { DATE_REGEX, validateDate, formatItalianDate } from "@/lib/astro-types";
+import { DATE_REGEX, validateDate, formatDisplayDate } from "@/lib/astro-types";
 import { todayUtcString } from "@/lib/date";
 
 // Cache the rendered image for 24 hours (per OG route revalidate spec).
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const raw = request.nextUrl.searchParams.get("date");
   const validDate = parseDate(raw);
   const date = validDate ?? todayUtcString();
-  const dateLong = formatItalianDate(date);
+  const dateLong = formatDisplayDate(date);
   const stars = buildStars(date);
 
   try {
@@ -207,7 +207,7 @@ export async function GET(request: NextRequest): Promise<Response> {
                 marginBottom: "28px",
               }}
             >
-              {`Hubble ti ha visto nascere`}
+              {`StarDay`}
             </div>
             <div
               style={{
@@ -222,7 +222,7 @@ export async function GET(request: NextRequest): Promise<Response> {
                 marginBottom: "32px",
               }}
             >
-              {`il ${dateLong}`}
+              {`${dateLong}`}
             </div>
             <div
               style={{
@@ -233,7 +233,7 @@ export async function GET(request: NextRequest): Promise<Response> {
                 maxWidth: "780px",
               }}
             >
-              Scopri la foto che il telescopio spaziale ha catturato il giorno del tuo compleanno.
+              Discover the photo the space telescope captured on your birthday.
             </div>
           </div>
 

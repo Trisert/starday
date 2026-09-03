@@ -14,7 +14,9 @@ function makeNextRequest(
   opts: { method?: string; body?: unknown; ip?: string; headers?: Record<string, string> } = {}
 ) {
   const headers: Record<string, string> = {
-    "x-forwarded-for": opts.ip ?? nextIp(),
+    // Trusted Vercel header first (matches getClientIp priority); generic
+    // x-forwarded-for is the documented dev fallback inside getClientIp.
+    "x-vercel-forwarded-for": opts.ip ?? nextIp(),
     ...(opts.headers ?? {}),
   };
   const init: RequestInit & { headers: Record<string, string> } = {
@@ -290,7 +292,7 @@ describe("GET /api/astro - P0 critical", () => {
   });
 
   it("rate limit 11 req same IP -> 429 on 11th", async () => {
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = vi.fn(async () => {
       return mockApodResponse({
         date: "2024-01-05",
         media_type: "image",

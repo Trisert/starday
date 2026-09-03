@@ -65,7 +65,7 @@ describe("validateDate", () => {
     expect(r.valid).toBe(false);
     if (!r.valid) {
       expect(r.code).toBe("INVALID_DATE");
-      expect(r.error).toMatch(/futuro/i);
+      expect(r.error).toMatch(/future/i);
     }
   });
 
@@ -80,7 +80,7 @@ describe("validateDate", () => {
     expect(r.valid).toBe(false);
     if (!r.valid) {
       expect(r.code).toBe("INVALID_DATE");
-      expect(r.error).toMatch(/formato/i);
+      expect(r.error).toMatch(/format/i);
     }
   });
 
@@ -103,7 +103,7 @@ describe("validateDate", () => {
     expect(r.valid).toBe(false);
     if (!r.valid) {
       expect(r.code).toBe("INVALID_DATE");
-      expect(r.error).toMatch(/data non valida/i);
+      expect(r.error).toMatch(/invalid date/i);
     }
   });
 

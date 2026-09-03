@@ -9,41 +9,16 @@ import {
   sanitiseCopyright,
   type ErrorCode,
 } from "@/lib/astro-types";
+import { todayUtcString } from "@/lib/date";
+import { fetchWithTimeout } from "@/lib/fetch";
+import type { ApodResponse, NasaImagesSearchResponse } from "@/lib/nasa-types";
 
 // Cache-Control via headers is authoritative. Removed `export const revalidate = 0`
 // which conflicted with in-memory cache (s-maxage 86400 for past dates vs forced
 // dynamic). Keep force-dynamic so Vercel doesn't statically cache today/error.
 export const dynamic = "force-dynamic";
 
-// NASA APOD raw shape
-interface ApodResponse {
-  date: string;
-  explanation: string;
-  hdurl?: string;
-  url?: string;
-  media_type: string;
-  title: string;
-  copyright?: string;
-  code?: number;
-  msg?: string;
-}
-
-// NASA Image Library search shape (partial)
-interface NasaImagesSearchResponse {
-  collection: {
-    items: Array<{
-      data: Array<{
-        title: string;
-        description?: string;
-        date_created: string;
-        photographer?: string;
-        nasa_id?: string;
-      }>;
-      links?: Array<{ href: string; rel?: string; render?: string }>;
-    }>;
-    metadata?: { total_hits: number };
-  };
-}
+// NASA wire types are imported from @/lib/nasa-types (single source of truth).
 
 // ---------- helpers ----------
 
@@ -102,10 +77,11 @@ if (typeof setInterval !== "undefined") {
 /**
  * Trusted proxy: on Vercel the edge terminates TLS and sets
  * `x-vercel-forwarded-for` as the trusted client chain. We take the
- * last entry via pop() (the real client as seen by Vercel). Fallback
- * is NextRequest.ip (populated by Vercel runtime) then "unknown".
- * Do NOT trust generic x-forwarded-for first-entry without Vercel header
- * because it is client-spoofable.
+ * last entry via pop() (the real client as seen by Vercel). Outside
+ * Vercel (dev, tests, other hosts) we fall back to the generic
+ * `x-forwarded-for` first entry, then NextRequest.ip, then "unknown".
+ * The generic header is client-spoofable — on Vercel the xvff branch
+ * above always takes precedence.
  */
 function getClientIp(request: NextRequest): string {
   const xvff = request.headers.get("x-vercel-forwarded-for");
@@ -116,6 +92,14 @@ function getClientIp(request: NextRequest): string {
       .filter(Boolean);
     const last = parts.pop();
     if (last) return last;
+  }
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)[0];
+    if (first) return first;
   }
   const ip = (request as unknown as { ip?: string }).ip;
   if (ip) return ip;
@@ -167,10 +151,6 @@ function applyRateLimitHeaders(
   return res;
 }
 
-function todayUtcString(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function getCached(date: string): AstroSuccess | null {
   if (date >= todayUtcString()) return null;
   const entry = cacheMap.get(date);
@@ -191,25 +171,7 @@ function setCached(date: string, value: AstroSuccess): void {
   evictIfNeeded(cacheMap);
 }
 
-// --- Fetch with AbortController timeout ---
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-  timeoutMs = 8000
-): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const upstreamSignal = init.signal;
-    if (upstreamSignal) {
-      if (upstreamSignal.aborted) controller.abort();
-      else upstreamSignal.addEventListener("abort", () => controller.abort(), { once: true });
-    }
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// fetchWithTimeout is imported from @/lib/fetch (AbortSignal.timeout based).
 
 function getApiKey(): string | null {
   const key = process.env.NASA_API_KEY || (process.env.NODE_ENV === "development" ? "DEMO_KEY" : null);
@@ -290,15 +252,16 @@ async function fetchFallback(requestedDate: string): Promise<AstroSuccess | null
     `https://images-api.nasa.gov/search?q=James%20Webb%20Space%20Telescope&media_type=image&year_start=${year}&year_end=${year}`,
   ];
 
-  // Global timeout 9s for the whole fallback (vs sequential 8s*2=16s > Vercel 10s)
+  // Global timeout 5s for the whole fallback. Combined with the 4s APOD
+  // budget below, worst-case wall time stays under the 10s Vercel limit.
   const globalController = new AbortController();
-  const globalTimer = setTimeout(() => globalController.abort(), 9000);
+  const globalTimer = setTimeout(() => globalController.abort(), 5000);
 
   let results: PromiseSettledResult<Response>[];
   try {
     results = await Promise.allSettled(
       urls.map((url) =>
-        fetchWithTimeout(url, { cache: "no-store", signal: globalController.signal }, 8000)
+        fetchWithTimeout(url, { cache: "no-store", signal: globalController.signal }, 4500)
       )
     );
   } catch {
@@ -366,7 +329,7 @@ async function fetchFallback(requestedDate: string): Promise<AstroSuccess | null
   const actualDate = DATE_REGEX.test(rawCreated.slice(0, 10)) ? rawCreated.slice(0, 10) : requestedDate;
 
   const offsetNote =
-    actualDate !== requestedDate ? ` (immagine più vicina disponibile: ${actualDate}, richiesta: ${requestedDate})` : "";
+    actualDate !== requestedDate ? ` (closest available image: ${actualDate}, requested: ${requestedDate})` : "";
 
   return {
     imageUrl,
@@ -420,7 +383,7 @@ async function handleAstro(
 
   const key = getApiKey();
   if (!key) {
-    const res = errorJson("Configurazione server mancante. Contatta l'amministratore.", "CONFIG_ERROR", 500, rateLimit);
+    const res = errorJson("Server misconfiguration. Contact the administrator.", "CONFIG_ERROR", 500, rateLimit);
     logStructured({
       ip: ctx.ip,
       date: requestedDate,
@@ -439,7 +402,7 @@ async function handleAstro(
   let apodRes: Response;
   let upstreamStatus: number | undefined;
   try {
-    apodRes = await fetchWithTimeout(apodUrl, { cache: "no-store" }, 8000);
+    apodRes = await fetchWithTimeout(apodUrl, { cache: "no-store" }, 4000);
     upstreamStatus = apodRes.status;
   } catch {
     const fb = await fetchFallback(requestedDate);
@@ -457,7 +420,7 @@ async function handleAstro(
       });
       return res;
     }
-    const res = errorJson("Servizio NASA temporaneamente non disponibile. Riprova più tardi.", "UPSTREAM_ERROR", 502, rateLimit);
+    const res = errorJson("NASA service temporarily unavailable. Try again later.", "UPSTREAM_ERROR", 502, rateLimit);
     logStructured({
       ip: ctx.ip,
       date: requestedDate,
@@ -488,7 +451,7 @@ async function handleAstro(
       });
       return res;
     }
-    const res = errorJson("Limite richieste NASA raggiunto. Riprova tra qualche minuto.", "RATE_LIMIT", 429, rateLimit, retryAfter);
+    const res = errorJson("NASA rate limit reached. Try again in a few minutes.", "RATE_LIMIT", 429, rateLimit, retryAfter);
     logStructured({
       ip: ctx.ip,
       date: requestedDate,
@@ -511,7 +474,7 @@ async function handleAstro(
       // ignore
     }
     if (body?.msg || body?.code === 400) {
-      const res = errorJson(body.msg ?? "Data non valida per APOD.", "INVALID_DATE", 400, rateLimit);
+      const res = errorJson(body.msg ?? "Invalid date for APOD.", "INVALID_DATE", 400, rateLimit);
       logStructured({
         ip: ctx.ip,
         date: requestedDate,
@@ -524,7 +487,7 @@ async function handleAstro(
       });
       return res;
     }
-    const res = errorJson("Richiesta non valida.", "INVALID_DATE", 400, rateLimit);
+    const res = errorJson("Invalid request.", "INVALID_DATE", 400, rateLimit);
     logStructured({
       ip: ctx.ip,
       date: requestedDate,
@@ -554,7 +517,7 @@ async function handleAstro(
       });
       return res;
     }
-    const res = errorJson("Errore nel recupero dell'immagine NASA.", "UPSTREAM_ERROR", 502, rateLimit);
+    const res = errorJson("Error fetching the NASA image.", "UPSTREAM_ERROR", 502, rateLimit);
     logStructured({
       ip: ctx.ip,
       date: requestedDate,
@@ -587,7 +550,7 @@ async function handleAstro(
       });
       return res;
     }
-    const res = errorJson("Risposta NASA non valida.", "UPSTREAM_ERROR", 502, rateLimit);
+    const res = errorJson("Invalid NASA response.", "UPSTREAM_ERROR", 502, rateLimit);
     logStructured({
       ip: ctx.ip,
       date: requestedDate,
@@ -647,7 +610,7 @@ async function handleAstro(
     return res;
   }
 
-  const res = errorJson("Nessuna immagine trovata per questa data.", "NOT_FOUND", 404, rateLimit);
+  const res = errorJson("No image found for this date.", "NOT_FOUND", 404, rateLimit);
   logStructured({
     ip: ctx.ip,
     date: requestedDate,
@@ -670,7 +633,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   if (!rateLimit.allowed) {
     const res = NextResponse.json(
-      { error: "Troppe richieste, riprova tra un minuto.", code: "RATE_LIMIT" },
+      { error: "Too many requests, try again in a minute.", code: "RATE_LIMIT" },
       { status: 429 }
     );
     applyRateLimitHeaders(res, rateLimit);
@@ -683,7 +646,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const date = request.nextUrl.searchParams.get("date") ?? undefined;
   if (!date) {
-    const res = errorJson("Parametro 'date' mancante. Usa ?date=YYYY-MM-DD.", "INVALID_DATE", 400, rateLimit);
+    const res = errorJson("Missing 'date' parameter. Use ?date=YYYY-MM-DD.", "INVALID_DATE", 400, rateLimit);
     logStructured({ ip, date: null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 400, code: "INVALID_DATE" });
     return res;
   }
@@ -697,7 +660,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (!rateLimit.allowed) {
     const res = NextResponse.json(
-      { error: "Troppe richieste, riprova tra un minuto.", code: "RATE_LIMIT" },
+      { error: "Too many requests, try again in a minute.", code: "RATE_LIMIT" },
       { status: 429 }
     );
     applyRateLimitHeaders(res, rateLimit);
@@ -714,7 +677,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     const qp = request.nextUrl.searchParams.get("date");
     if (qp) return handleAstro(qp, rateLimit, { ip, startMs, cacheHit: false, fallbackUsed: false });
-    const res = errorJson("Body JSON non valido. Invia { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, rateLimit);
+    const res = errorJson("Invalid JSON body. Send { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, rateLimit);
     logStructured({ ip, date: null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 400, code: "INVALID_DATE" });
     return res;
   }
@@ -725,7 +688,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     undefined;
 
   if (typeof date !== "string" || !date) {
-    const res = errorJson("Campo 'date' mancante. Invia { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, rateLimit);
+    const res = errorJson("Missing 'date' field. Send { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, rateLimit);
     logStructured({ ip, date: null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 400, code: "INVALID_DATE" });
     return res;
   }

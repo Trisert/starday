@@ -38,22 +38,31 @@ export function validateDate(
   if (!DATE_REGEX.test(date)) {
     return {
       valid: false,
-      error: "Formato data non valido. Usa YYYY-MM-DD.",
+      error: "Invalid date format. Use YYYY-MM-DD.",
       code: "INVALID_DATE",
     };
   }
   const d = new Date(date + "T00:00:00Z");
   if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date) {
-    return { valid: false, error: "Data non valida.", code: "INVALID_DATE" };
+    return { valid: false, error: "Invalid date.", code: "INVALID_DATE" };
   }
-  // Optional MIN_YEAR guard — exported constant for consumers, but validator remains permissive
-  // for fallback UX (pre-1995 dates are still valid here, route tries Image Library).
-  // Uncomment to enforce strict cutoff: if (Number(date.slice(0,4)) < MIN_YEAR) { return ... }
+  // Sanity guard against absurd years (e.g. 0000/9999 would produce useless
+  // `year_start=0000` NASA Image Library queries). MIN_YEAR (1995) stays
+  // informational: it marks the APOD archive start, not a cutoff —
+  // pre-1995 dates remain valid here and are served via the fallback path.
+  const year = Number(date.slice(0, 4));
+  if (!Number.isFinite(year) || year < 1900) {
+    return {
+      valid: false,
+      error: "Invalid date. Year must be 1900 or later.",
+      code: "INVALID_DATE",
+    };
+  }
   const todayStr = todayUtcString();
   if (date > todayStr) {
     return {
       valid: false,
-      error: "La data non può essere nel futuro.",
+      error: "Date cannot be in the future.",
       code: "INVALID_DATE",
     };
   }
@@ -97,6 +106,40 @@ export function formatItalianDate(iso: string): string {
     if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return iso;
     if (m < 1 || m > 12) return iso;
     return `${d} ${months[m - 1]} ${y}`;
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Format a YYYY-MM-DD string as a long English display date (e.g. "April 15, 1990").
+ * Falls back to the original string on any error.
+ * This is the locale-aware formatter consumers should use; formatItalianDate
+ * is kept as a deprecated alias for backwards compat.
+ */
+export function formatDisplayDate(iso: string): string {
+  try {
+    const [yStr, mStr, dStr] = iso.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const d = Number(dStr);
+    const months = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return iso;
+    if (m < 1 || m > 12) return iso;
+    return `${months[m - 1]} ${d}, ${y}`;
   } catch {
     return iso;
   }

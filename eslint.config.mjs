@@ -12,7 +12,16 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build artifacts / coverage reports are never linted:
+    "coverage/**",
   ]),
+  {
+    // Test files use flexible typing (vi.fn mocks, stub helpers).
+    files: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

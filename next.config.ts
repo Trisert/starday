@@ -5,7 +5,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https://api.nasa.gov https://apod.nasa.gov https://images-assets.nasa.gov https://images.nasa.gov https://cdn.spacetelescope.org",
       "font-src 'self' data:",
