@@ -3,8 +3,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Image from "next/image";
 import type { AstroSuccess, AstroErrorBody } from "@/lib/astro-types";
+import { MIN_API_DATE } from "@/lib/astro-types";
 
-const MIN_DATE = "1995-06-16";
+const MIN_DATE = MIN_API_DATE;
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -36,7 +37,7 @@ function mapErrorMessage(status: number, body: AstroErrorBody | null, date: stri
   if (status >= 500) return "NASA service temporarily unavailable. Try again later.";
   // client-side validation fallback
   if (date > todayISO()) return "You cannot pick a future date.";
-  if (date < MIN_DATE) return "Hubble has been in orbit since 1990, but the APOD archive starts on June 16, 1995.";
+  if (date < MIN_DATE) return "Hubble has been in orbit since 1990, but the archive starts on 01/01/1900.";
   return "Something went wrong. Try again.";
 }
 
@@ -69,7 +70,7 @@ export default function Home() {
   const validationError = useMemo(() => {
     if (!date) return null;
     if (date > today) return "Date cannot be in the future.";
-    if (date < MIN_DATE) return "Date must be from 06/16/1995 onwards (first APOD).";
+    if (date < MIN_DATE) return "Date must be from 01/01/1900 onwards.";
     return null;
   }, [date, today]);
 
@@ -84,7 +85,7 @@ export default function Home() {
       return;
     }
     if (targetDate < MIN_DATE) {
-      setError("Date must be from 06/16/1995 onwards (first APOD).");
+      setError("Date must be from 01/01/1900 onwards.");
       return;
     }
 
@@ -184,17 +185,17 @@ export default function Home() {
           text: data.caption,
           url: shareUrl,
         });
-        showToast("Link copied!");
+        showToast("Shared!");
       } catch {}
     } else if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(shareUrl);
         showToast("Link copied!");
       } catch {
-        showToast("Link copied!");
+        showToast("Could not copy the link.");
       }
     } else {
-      showToast("Link copied!");
+      showToast("Copy not available in this browser.");
     }
   }
 
@@ -213,7 +214,7 @@ export default function Home() {
         </h1>
         <p className="mt-3 text-center text-sm sm:text-[15px] leading-6 text-zinc-400 max-w-xl mx-auto">
           Enter your birthdate and discover the space
-          telescope image from your day. Archive since June 16, 1995.
+          telescope image from your day. APOD since 1995, earlier years via the NASA archive.
         </p>
       </header>
 
@@ -239,11 +240,11 @@ export default function Home() {
                   min={MIN_DATE}
                   max={today}
                   required
-                  aria-describedby="date-hint date-error"
+                  aria-describedby={validationError ? "date-hint date-error" : "date-hint"}
                   className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-700/50 transition"
                 />
                 <p id="date-hint" className="mt-2 text-xs text-zinc-400">
-                  Min 06/16/1995 — Max today ({formatDateEN(today)})
+                  Min 01/01/1900 — Max today ({formatDateEN(today)})
                 </p>
               </div>
 
@@ -408,10 +409,7 @@ export default function Home() {
         </p>
       </main>
 
-      {/* Toast */}
-      <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {toast ? toast : null}
-      </div>
+      {/* Toast (single live region — role=status announces politely) */}
       {toast && (
         <div
           role="status"

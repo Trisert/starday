@@ -41,9 +41,12 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const cacheMap = new Map<string, CacheEntry>();
 
 function evictIfNeeded<K, V>(map: Map<K, V>): void {
-  if (map.size > MAX_MAP_SIZE) {
+  // Trim down TO the cap (not a single entry) — one oversized burst would
+  // otherwise leave the map permanently above MAX_MAP_SIZE.
+  while (map.size > MAX_MAP_SIZE) {
     const first = map.keys().next().value as K | undefined;
-    if (first !== undefined) map.delete(first);
+    if (first === undefined) break;
+    map.delete(first);
   }
 }
 
@@ -75,35 +78,30 @@ if (typeof setInterval !== "undefined") {
 }
 
 /**
- * Trusted proxy: on Vercel the edge terminates TLS and sets
- * `x-vercel-forwarded-for` as the trusted client chain. We take the
- * last entry via pop() (the real client as seen by Vercel). Outside
- * Vercel (dev, tests, other hosts) we fall back to the generic
- * `x-forwarded-for` first entry, then NextRequest.ip, then "unknown".
- * The generic header is client-spoofable — on Vercel the xvff branch
- * above always takes precedence.
+ * Client IP for rate limiting.
+ * Vercel overwrites `x-forwarded-for` with the real client IP and does not
+ * forward external values (anti-spoofing), so the FIRST entry is trusted on
+ * Vercel (https://vercel.com/docs/headers/request-headers). `x-real-ip` is
+ * documented as identical and is the fallback. There is no
+ * `x-vercel-forwarded-for` request header — do not read it.
+ * Caveat: behind a custom proxy on top of Vercel these headers reflect the
+ * proxy, not the end client (Enterprise trusted-proxy aside).
  */
 function getClientIp(request: NextRequest): string {
-  const xvff = request.headers.get("x-vercel-forwarded-for");
-  if (xvff) {
-    const parts = xvff
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const last = parts.pop();
-    if (last) return last;
-  }
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff
+  const pickFirst = (value: string | null): string | null => {
+    if (!value) return null;
+    const first = value
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)[0];
-    if (first) return first;
-  }
-  const ip = (request as unknown as { ip?: string }).ip;
-  if (ip) return ip;
-  return "unknown";
+    return first ?? null;
+  };
+  return (
+    pickFirst(request.headers.get("x-forwarded-for")) ??
+    pickFirst(request.headers.get("x-real-ip")) ??
+    (request as unknown as { ip?: string }).ip ??
+    "unknown"
+  );
 }
 
 function checkRateLimit(ip: string): {

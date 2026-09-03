@@ -56,11 +56,11 @@ export const MIN_YEAR = 1995;
 // (route.ts and other consumers import from @/lib/astro-types).
 export {
   DATE_REGEX,
+  MIN_API_DATE,
   todayUtcString,
   isPastDate,
   daysDiff,
   validateDate,
-  formatItalianDate,
   formatDisplayDate,
 } from "./date";
 
@@ -95,7 +95,10 @@ export function isRawOrFits(url: string): boolean {
  * - Empty / missing → "NASA"
  * - More than 120 chars (likely a description) → "NASA/ESA/STScI"
  * - Contains common mission/campaign/solar keywords → "NASA/ESA/STScI"
- * - Otherwise the original string, HTML-escaped.
+ * - Otherwise the original string, trimmed.
+ * NOTE: no HTML-escaping here — consumers render this as React text (which
+ * escapes automatically). Escaping at this layer double-escapes in the UI
+ * ("A & B" would render as "A &amp; B").
  */
 const COPYRIGHT_FALLBACK = "NASA/ESA/STScI";
 // Strict: only true mission/campaign descriptors, NOT telescope acronyms that
@@ -104,20 +107,11 @@ const MISSION_KEYWORDS =
   /\b(solar\s+cycle|sdo|aia|lasco|soho|epic|terra|aqua)\b/i;
 const COPYRIGHT_MAX = 120;
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 export function sanitiseCopyright(raw: string | undefined | null): string {
   if (!raw) return "NASA";
   const trimmed = raw.trim();
   if (!trimmed) return "NASA";
   if (trimmed.length > COPYRIGHT_MAX) return COPYRIGHT_FALLBACK;
   if (MISSION_KEYWORDS.test(trimmed)) return COPYRIGHT_FALLBACK;
-  return escapeHtml(trimmed);
+  return trimmed;
 }

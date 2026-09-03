@@ -14,9 +14,9 @@ function makeNextRequest(
   opts: { method?: string; body?: unknown; ip?: string; headers?: Record<string, string> } = {}
 ) {
   const headers: Record<string, string> = {
-    // Trusted Vercel header first (matches getClientIp priority); generic
-    // x-forwarded-for is the documented dev fallback inside getClientIp.
-    "x-vercel-forwarded-for": opts.ip ?? nextIp(),
+    // Matches production: Vercel overwrites x-forwarded-for with the real
+    // client IP (anti-spoofing) — first entry wins in getClientIp.
+    "x-forwarded-for": opts.ip ?? nextIp(),
     ...(opts.headers ?? {}),
   };
   const init: RequestInit & { headers: Record<string, string> } = {
@@ -320,6 +320,48 @@ describe("GET /api/astro - P0 critical", () => {
     const json: any = await res11.json();
     expect(json.code).toBe("RATE_LIMIT");
     expect(res11.headers.get("X-RateLimit-Remaining")).toBe("0");
+  });
+
+  it("x-forwarded-for chain resolves to first entry (Vercel client IP)", async () => {
+    const fetchMock = vi.fn(async () => {
+      return mockApodResponse({
+        date: "2024-02-01",
+        media_type: "image",
+        hdurl: "https://apod.nasa.gov/chain.jpg",
+        title: "Chain",
+        explanation: "exp",
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock as any);
+    vi.resetModules();
+    process.env.NASA_API_KEY = "TEST_KEY";
+    const { GET } = await import("./route");
+    // Distinct first-entries sharing the same proxy tail must land in
+    // independent buckets: 10 requests on each of two chains all pass.
+    // Today (2024-06-15, fake clock) is never cached, so every hit counts.
+    for (let i = 0; i < 10; i++) {
+      const r1 = await GET(
+        makeNextRequest("/api/astro?date=2024-06-15", {
+          headers: { "x-forwarded-for": `1.1.1.1, 9.9.9.${i}` },
+        })
+      );
+      expect(r1.status).toBe(200);
+      const r2 = await GET(
+        makeNextRequest("/api/astro?date=2024-06-15", {
+          headers: { "x-forwarded-for": `2.2.2.2, 9.9.9.${i}` },
+        })
+      );
+      expect(r2.status).toBe(200);
+    }
+    // 11th request keyed on the first chain's client IP -> 429.
+    // Proves first-entry keying (a last-entry impl would bucket on 9.9.9.x
+    // and never trip here).
+    const limited = await GET(
+      makeNextRequest("/api/astro?date=2024-06-15", {
+        headers: { "x-forwarded-for": "1.1.1.1, 8.8.8.8" },
+      })
+    );
+    expect(limited.status).toBe(429);
   });
 
   it("POST json ok -> 200", async () => {

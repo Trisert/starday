@@ -1,7 +1,7 @@
 /**
- * Fetch with timeout using AbortSignal.timeout + clearTimeout.
- * Merges an optional upstream signal via AbortSignal.any when available,
- * falling back to manual AbortController composition.
+ * Fetch with timeout using AbortSignal.timeout.
+ * An optional upstream signal is merged via AbortSignal.any when available,
+ * falling back to manual AbortController composition on older runtimes.
  */
 
 export async function fetchWithTimeout(
@@ -11,33 +11,16 @@ export async function fetchWithTimeout(
 ): Promise<Response> {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
 
-  // Prefer AbortSignal.any for combining signals when available
-  if (typeof AbortSignal.any === "function" && init.signal) {
-    const combined = AbortSignal.any([init.signal, timeoutSignal]);
-    // Dummy timer to satisfy clearTimeout requirement and ensure cleanup path is exercised
-    const timer = setTimeout(() => {}, timeoutMs);
-    try {
-      return await fetch(input, { ...init, signal: combined });
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   if (typeof AbortSignal.any === "function") {
-    const timer = setTimeout(() => {}, timeoutMs);
-    try {
-      return await fetch(input, { ...init, signal: timeoutSignal });
-    } finally {
-      clearTimeout(timer);
-    }
+    const signals = init.signal ? [init.signal, timeoutSignal] : [timeoutSignal];
+    return fetch(input, { ...init, signal: AbortSignal.any(signals) });
   }
 
-  // Fallback for runtimes without AbortSignal.any: manual controller + timer
+  // Fallback for runtimes without AbortSignal.any: manual controller.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const onTimeoutAbort = () => controller.abort(timeoutSignal.reason);
-  // If already aborted, propagate immediately
   if (timeoutSignal.aborted) controller.abort(timeoutSignal.reason);
   else timeoutSignal.addEventListener("abort", onTimeoutAbort, { once: true });
 

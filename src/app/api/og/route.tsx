@@ -1,80 +1,18 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
-import { DATE_REGEX, validateDate, formatDisplayDate } from "@/lib/astro-types";
-import { todayUtcString } from "@/lib/date";
+import { formatDisplayDate } from "@/lib/astro-types";
+import { buildStars, ogCacheControl, resolveOgDate } from "@/lib/og-helpers";
 
-// Cache the rendered image for 24 hours (per OG route revalidate spec).
-export const revalidate = 86400;
-
-// --- Date helpers (centralized in @/lib/date & @/lib/astro-types) ---
-
-/**
- * Validate a YYYY-MM-DD string. Returns the canonical date on success or `null`
- * for any failure (bad format, invalid calendar date, future date).
- * Delegates to centralized validateDate helper.
- */
-function parseDate(raw: string | null): string | null {
-  if (!raw) return null;
-  if (!DATE_REGEX.test(raw)) return null;
-  const v = validateDate(raw);
-  return v.valid ? v.date : null;
-}
-
-// --- Star field ---
-
-/**
- * Deterministic pseudo-random number generator (mulberry32) so the star field
- * stays stable across re-renders for the same date.
- */
-function makeRng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashSeed(str: string): number {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(h ^ str.charCodeAt(i), 16777619);
-  }
-  return h >>> 0;
-}
-
-interface Star {
-  x: number;
-  y: number;
-  size: number;
-  opacity: number;
-  tint: string;
-}
-
-function buildStars(date: string): Star[] {
-  const rng = makeRng(hashSeed(date));
-  const stars: Star[] = [];
-  const count = 110;
-  for (let i = 0; i < count; i++) {
-    const x = Math.floor(rng() * 1200);
-    const y = Math.floor(rng() * 630);
-    const sizeRoll = rng();
-    const size = sizeRoll > 0.95 ? 3.5 : sizeRoll > 0.8 ? 2.4 : 1.4;
-    const opacity = 0.3 + rng() * 0.7;
-    const tint = rng() > 0.92 ? "#bfdbfe" : rng() > 0.85 ? "#fde68a" : "#ffffff";
-    stars.push({ x, y, size, opacity, tint });
-  }
-  return stars;
-}
+// No `export const revalidate`: the card date defaults to today (mutable),
+// so responses must not sit in the route cache for 24h. CDN caching is
+// driven per-response via Cache-Control in ogCacheControl() instead
+// (long + immutable for past dates, 1h for today).
 
 // --- Route ---
 
 export async function GET(request: NextRequest): Promise<Response> {
   const raw = request.nextUrl.searchParams.get("date");
-  const validDate = parseDate(raw);
-  const date = validDate ?? todayUtcString();
+  const date = resolveOgDate(raw);
   const dateLong = formatDisplayDate(date);
   const stars = buildStars(date);
 
@@ -282,9 +220,9 @@ export async function GET(request: NextRequest): Promise<Response> {
         width: 1200,
         height: 630,
         headers: {
-          // Belt-and-suspenders cache headers; the route-level `revalidate`
-          // export is the source of truth but these help CDNs too.
-          "Cache-Control": "public, immutable, no-transform, max-age=86400",
+          // Past-date cards are immutable (long CDN cache); today's card is
+          // revalidated hourly so it never goes stale (see ogCacheControl).
+          "Cache-Control": ogCacheControl(date),
         },
       }
     );

@@ -4,8 +4,14 @@
 /** Strict YYYY-MM-DD regex. */
 export const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Minimum year for APOD archive (1995). */
+/** Minimum year for APOD archive (1995). Informational: marks the APOD
+ * coverage start, not a validation cutoff (see MIN_API_DATE). */
 export const MIN_YEAR = 1995;
+
+/** Earliest date the API serves (YYYY-MM-DD). Earlier years are rejected to
+ * avoid useless NASA Image Library queries (e.g. `year_start=0000`).
+ * Single source of truth for the API date floor — the UI imports this. */
+export const MIN_API_DATE = "1900-01-01";
 
 /** Stable error codes (mirrors astro-types for standalone usage without circular import). */
 export type ErrorCode = "INVALID_DATE" | "RATE_LIMIT" | "NOT_FOUND" | "UPSTREAM_ERROR" | "CONFIG_ERROR";
@@ -51,7 +57,7 @@ export function validateDate(
   // informational: it marks the APOD archive start, not a cutoff —
   // pre-1995 dates remain valid here and are served via the fallback path.
   const year = Number(date.slice(0, 4));
-  if (!Number.isFinite(year) || year < 1900) {
+  if (!Number.isFinite(year) || date < MIN_API_DATE) {
     return {
       valid: false,
       error: "Invalid date. Year must be 1900 or later.",
@@ -80,42 +86,8 @@ export function daysDiff(a: string, b: string): number {
 }
 
 /**
- * Format a YYYY-MM-DD string as a long Italian date (e.g. "15 aprile 1990").
- * Falls back to the original string on any error.
- */
-export function formatItalianDate(iso: string): string {
-  try {
-    const [yStr, mStr, dStr] = iso.split("-");
-    const y = Number(yStr);
-    const m = Number(mStr);
-    const d = Number(dStr);
-    const months = [
-      "gennaio",
-      "febbraio",
-      "marzo",
-      "aprile",
-      "maggio",
-      "giugno",
-      "luglio",
-      "agosto",
-      "settembre",
-      "ottobre",
-      "novembre",
-      "dicembre",
-    ];
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return iso;
-    if (m < 1 || m > 12) return iso;
-    return `${d} ${months[m - 1]} ${y}`;
-  } catch {
-    return iso;
-  }
-}
-
-/**
  * Format a YYYY-MM-DD string as a long English display date (e.g. "April 15, 1990").
  * Falls back to the original string on any error.
- * This is the locale-aware formatter consumers should use; formatItalianDate
- * is kept as a deprecated alias for backwards compat.
  */
 export function formatDisplayDate(iso: string): string {
   try {
