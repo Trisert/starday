@@ -3,24 +3,18 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Image from "next/image";
 import type { AstroSuccess, AstroErrorBody } from "@/lib/astro-types";
-import { MIN_API_DATE } from "@/lib/astro-types";
-
-const MIN_DATE = MIN_API_DATE;
+import { MIN_API_DATE as MIN_DATE } from "@/lib/astro-types";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
 function formatDateEN(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
-  }
+  return new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function mapErrorMessage(status: number, body: AstroErrorBody | null, date: string): string {
@@ -49,7 +43,7 @@ function initialDateFromUrl(): string {
     const params = new URLSearchParams(window.location.search);
     const d = params.get("date");
     if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = todayISO();
       if (d >= MIN_DATE && d <= todayStr) return d;
     }
   } catch {}
@@ -58,7 +52,7 @@ function initialDateFromUrl(): string {
 
 export default function Home() {
   const today = useMemo(() => todayISO(), []);
-  const [date, setDate] = useState<string>(initialDateFromUrl);
+  const [date, setDate] = useState(initialDateFromUrl);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AstroSuccess | null>(null);
@@ -74,7 +68,7 @@ export default function Home() {
     return null;
   }, [date, today]);
 
-  async function fetchData(targetDate: string) {
+  async function fetchData(targetDate: string): Promise<void> {
     setError(null);
     if (!targetDate) {
       setError("Select a date.");
@@ -93,7 +87,6 @@ export default function Home() {
     setData(null);
     try {
       const res = await fetch(`/api/astro?date=${encodeURIComponent(targetDate)}`, {
-        method: "GET",
         headers: { Accept: "application/json" },
       });
 
@@ -107,8 +100,7 @@ export default function Home() {
 
       if (json && typeof json.imageUrl === "string" && typeof json.title === "string") {
         setImgError(null);
-        const success = json as AstroSuccess;
-        setData(success);
+        setData(json as AstroSuccess);
         // deep-link: push history.replaceState
         try {
           const url = new URL(window.location.href);
@@ -133,7 +125,7 @@ export default function Home() {
     }
   }
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     await fetchData(date);
   }
@@ -146,7 +138,7 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // scrollIntoView + focus quando data arriva
+  // scroll the result into view and focus it when it arrives
   useEffect(() => {
     if (data && resultRef.current) {
       resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -161,10 +153,6 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-  }
-
   function getShareUrl(targetDate: string): string {
     try {
       const origin = window.location.origin;
@@ -175,7 +163,7 @@ export default function Home() {
     }
   }
 
-  async function handleShare() {
+  async function handleShare(): Promise<void> {
     if (!data) return;
     const shareUrl = getShareUrl(data.requestedDate);
     if (navigator.share && window.isSecureContext) {
@@ -185,17 +173,17 @@ export default function Home() {
           text: data.caption,
           url: shareUrl,
         });
-        showToast("Shared!");
+        setToast("Shared!");
       } catch {}
     } else if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(shareUrl);
-        showToast("Link copied!");
+        setToast("Link copied!");
       } catch {
-        showToast("Could not copy the link.");
+        setToast("Could not copy the link.");
       }
     } else {
-      showToast("Copy not available in this browser.");
+      setToast("Copy not available in this browser.");
     }
   }
 
@@ -251,7 +239,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={loading || !!validationError || !date}
-                className="inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-semibold text-zinc-900 shadow hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0 sm:self-start sm:mt-0 min-w-[170px] h-[46px]"
+                className="inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-semibold text-zinc-900 shadow hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0 sm:self-start min-w-[170px] h-[46px]"
               >
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
@@ -278,11 +266,12 @@ export default function Home() {
               className="mt-5 rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm leading-5 text-red-200"
             >
               {error}
-              {error.toLowerCase().includes("429") || error.toLowerCase().includes("too many") ? (
+              {(error.toLowerCase().includes("429") ||
+                error.toLowerCase().includes("too many")) && (
                 <p className="mt-1 text-xs text-red-300/80">
                   Tip: wait 30-60 seconds and try again.
                 </p>
-              ) : null}
+              )}
             </div>
           )}
 
@@ -302,7 +291,7 @@ export default function Home() {
           )}
         </div>
 
-        {/* Risultato */}
+        {/* Result */}
         {data && !loading && (
           <div
             ref={resultRef}
@@ -327,7 +316,6 @@ export default function Home() {
                   className="object-contain"
                   sizes="(max-width: 768px) 100vw, 768px"
                   priority
-                  placeholder="empty"
                   referrerPolicy="no-referrer"
                   onError={() => setImgError("Image unavailable")}
                 />

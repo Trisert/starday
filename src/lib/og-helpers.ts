@@ -2,8 +2,14 @@
  * Pure helpers for the /api/og social-card route, extracted to @/lib so they
  * are unit-testable without pulling in next/og (Satori) at import time.
  */
-import { DATE_REGEX, validateDate } from "@/lib/astro-types";
-import { todayUtcString } from "@/lib/date";
+import { todayUtcString, validateDate } from "@/lib/date";
+
+/** OG card dimensions (must match the ImageResponse size in the route). */
+export const OG_WIDTH = 1200;
+export const OG_HEIGHT = 630;
+
+/** Number of stars in the deterministic background field. */
+export const STAR_COUNT = 110;
 
 /**
  * Validate a YYYY-MM-DD string. Returns the canonical date on success or
@@ -12,7 +18,6 @@ import { todayUtcString } from "@/lib/date";
  */
 export function parseOgDate(raw: string | null): string | null {
   if (!raw) return null;
-  if (!DATE_REGEX.test(raw)) return null;
   const v = validateDate(raw);
   return v.valid ? v.date : null;
 }
@@ -46,21 +51,20 @@ export function hashSeed(str: string): number {
 }
 
 export interface Star {
-  x: number;
-  y: number;
-  size: number;
-  opacity: number;
-  tint: string;
+  readonly x: number;
+  readonly y: number;
+  readonly size: number;
+  readonly opacity: number;
+  readonly tint: string;
 }
 
 /** Deterministic 110-star field for a given date string. */
 export function buildStars(date: string): Star[] {
   const rng = makeRng(hashSeed(date));
   const stars: Star[] = [];
-  const count = 110;
-  for (let i = 0; i < count; i++) {
-    const x = Math.floor(rng() * 1200);
-    const y = Math.floor(rng() * 630);
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const x = Math.floor(rng() * OG_WIDTH);
+    const y = Math.floor(rng() * OG_HEIGHT);
     const sizeRoll = rng();
     const size = sizeRoll > 0.95 ? 3.5 : sizeRoll > 0.8 ? 2.4 : 1.4;
     const opacity = 0.3 + rng() * 0.7;

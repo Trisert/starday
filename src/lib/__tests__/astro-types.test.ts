@@ -9,7 +9,7 @@ import {
   type AstroSuccess,
   type AstroErrorBody,
   type ErrorCode,
-} from "../astro-types";
+} from "@/lib/astro-types";
 
 describe("constants", () => {
   it("MIN_APOD_DATE matches the APOD archive start", () => {

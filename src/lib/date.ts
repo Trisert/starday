@@ -13,8 +13,30 @@ export const MIN_YEAR = 1995;
  * Single source of truth for the API date floor — the UI imports this. */
 export const MIN_API_DATE = "1900-01-01";
 
-/** Stable error codes (mirrors astro-types for standalone usage without circular import). */
+/** Stable error codes (canonical definition — re-exported by astro-types). */
 export type ErrorCode = "INVALID_DATE" | "RATE_LIMIT" | "NOT_FOUND" | "UPSTREAM_ERROR" | "CONFIG_ERROR";
+
+/** Result of validateDate. */
+export type ValidateDateResult =
+  | { valid: true; date: string }
+  | { valid: false; error: string; code: ErrorCode };
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
 
 /**
  * Return today's date as YYYY-MM-DD in UTC.
@@ -36,11 +58,10 @@ export function isPastDate(date: string): boolean {
  * - Format must match YYYY-MM-DD
  * - Must be a real calendar date
  * - Must not be in the future (relative to UTC today)
- * Dates before MIN_YEAR / MIN_APOD_DATE are accepted (fallback path handles them).
+ * Dates before the APOD archive start are accepted (fallback path handles
+ * them); only dates before MIN_API_DATE are rejected.
  */
-export function validateDate(
-  date: string
-): { valid: true; date: string } | { valid: false; error: string; code: ErrorCode } {
+export function validateDate(date: string): ValidateDateResult {
   if (!DATE_REGEX.test(date)) {
     return {
       valid: false,
@@ -82,7 +103,7 @@ export function validateDate(
 export function daysDiff(a: string, b: string): number {
   const da = new Date(a + "T00:00:00Z").getTime();
   const db = new Date(b + "T00:00:00Z").getTime();
-  return Math.abs(da - db) / (1000 * 60 * 60 * 24);
+  return Math.abs(da - db) / MS_PER_DAY;
 }
 
 /**
@@ -95,23 +116,9 @@ export function formatDisplayDate(iso: string): string {
     const y = Number(yStr);
     const m = Number(mStr);
     const d = Number(dStr);
-    const months = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ];
     if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return iso;
     if (m < 1 || m > 12) return iso;
-    return `${months[m - 1]} ${d}, ${y}`;
+    return `${MONTH_NAMES[m - 1]} ${d}, ${y}`;
   } catch {
     return iso;
   }

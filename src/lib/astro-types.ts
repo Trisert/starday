@@ -1,6 +1,8 @@
 // Shared types and helpers for the NASA APOD + fallback API.
 // Used by src/app/api/astro/route.ts (server) and src/app/page.tsx (client).
 
+import type { ErrorCode, ValidateDateResult } from "./date";
+
 /**
  * Shape of a successful APOD / NASA Image Library fallback response.
  */
@@ -30,15 +32,8 @@ export interface AstroErrorBody {
  */
 export type AstroResult = AstroSuccess | AstroErrorBody;
 
-/**
- * Stable error codes returned in AstroErrorBody.code.
- */
-export type ErrorCode =
-  | "INVALID_DATE"
-  | "RATE_LIMIT"
-  | "NOT_FOUND"
-  | "UPSTREAM_ERROR"
-  | "CONFIG_ERROR";
+// Canonical definitions live in ./date (single source of truth).
+export type { ErrorCode, ValidateDateResult };
 
 /**
  * First APOD date — used as a hint for the minimum valid date input.
@@ -47,22 +42,23 @@ export type ErrorCode =
  */
 export const MIN_APOD_DATE = "1995-06-16";
 
-/**
- * Minimum year for APOD archive — guard constant for validation helpers.
- */
-export const MIN_YEAR = 1995;
-
 // Centralized date helpers — single source of truth lives in ./date, re-exported here for backwards compat
 // (route.ts and other consumers import from @/lib/astro-types).
 export {
   DATE_REGEX,
   MIN_API_DATE,
+  MIN_YEAR,
   todayUtcString,
   isPastDate,
   daysDiff,
   validateDate,
   formatDisplayDate,
 } from "./date";
+
+const FITS_RE = /\.fits?(\?|#|$)/i;
+const RAW_EXT_RE = /\.raw(\?|#|$)/i;
+const RAW_PARAM_RE = /[?&]raw(?:=|&|$)/i;
+const RAW_SEGMENT_RE = /\/raw(?:\/|$)/i;
 
 /**
  * Detect whether a URL points to a raw or FITS asset that the browser can't
@@ -80,10 +76,10 @@ export {
  * the `raw` pattern is anchored to a path/query boundary.
  */
 export function isRawOrFits(url: string): boolean {
-  if (/\.fits?(\?|#|$)/i.test(url)) return true;
-  if (/\.raw(\?|#|$)/i.test(url)) return true;
-  if (/[?&]raw(?:=|&|$)/i.test(url)) return true;
-  if (/\/raw(?:\/|$)/i.test(url)) return true;
+  if (FITS_RE.test(url)) return true;
+  if (RAW_EXT_RE.test(url)) return true;
+  if (RAW_PARAM_RE.test(url)) return true;
+  if (RAW_SEGMENT_RE.test(url)) return true;
   return false;
 }
 

@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { ComponentProps } from "react";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import Home from "./page";
 
 vi.mock("next/image", () => ({
-  default: (props: any) => {
+  default: (props: ComponentProps<"img">) => {
     // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
     return <img {...props} />;
   },
@@ -15,7 +16,7 @@ describe("Home page", () => {
     vi.useFakeTimers({ toFake: ["Date"] } as any);
     vi.setSystemTime(new Date("2024-06-15T12:00:00Z"));
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) } as Response)));
-    // jsdom missing
+    // jsdom does not implement scrollIntoView — stub it
     if (!Element.prototype.scrollIntoView) {
       Element.prototype.scrollIntoView = vi.fn() as any;
     } else {

@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
-import { formatDisplayDate } from "@/lib/astro-types";
-import { buildStars, ogCacheControl, resolveOgDate } from "@/lib/og-helpers";
+import { formatDisplayDate } from "@/lib/date";
+import { buildStars, OG_HEIGHT, OG_WIDTH, ogCacheControl, resolveOgDate } from "@/lib/og-helpers";
 
 // No `export const revalidate`: the card date defaults to today (mutable),
 // so responses must not sit in the route cache for 24h. CDN caching is
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest): Promise<Response> {
                 marginBottom: "28px",
               }}
             >
-              {`StarDay`}
+              StarDay
             </div>
             <div
               style={{
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest): Promise<Response> {
                 marginBottom: "32px",
               }}
             >
-              {`${dateLong}`}
+              {dateLong}
             </div>
             <div
               style={{
@@ -217,8 +217,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         </div>
       ),
       {
-        width: 1200,
-        height: 630,
+        width: OG_WIDTH,
+        height: OG_HEIGHT,
         headers: {
           // Past-date cards are immutable (long CDN cache); today's card is
           // revalidated hourly so it never goes stale (see ogCacheControl).
