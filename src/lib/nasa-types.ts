@@ -13,6 +13,14 @@ export interface ApodResponse {
   msg?: string;
 }
 
+/**
+ * Normalised subset of APOD `media_type`. NASA only documents
+ * "image" and "video"; we keep `string` so unknown values
+ * (forward-compat) still typecheck, but expose the literals
+ * for narrowing at the call site.
+ */
+export type ApodMediaType = "image" | "video";
+
 /** Single item from NASA Image Library search. */
 export interface NasaImageItem {
   data: Array<{

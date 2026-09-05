@@ -1,7 +1,7 @@
 // Shared types and helpers for the NASA APOD + fallback API.
 // Used by src/app/api/astro/route.ts (server) and src/app/page.tsx (client).
 
-import type { ErrorCode, ValidateDateResult } from "./date";
+import type { ErrorCode } from "./date";
 
 /**
  * Shape of a successful APOD / NASA Image Library fallback response.
@@ -25,15 +25,8 @@ export interface AstroErrorBody {
   code: ErrorCode;
 }
 
-/**
- * Discriminated-ish union returned from /api/astro.
- * Note: the wire shape does NOT include a discriminator field, so consumers
- * type-narrow by checking for `error` vs `imageUrl`.
- */
-export type AstroResult = AstroSuccess | AstroErrorBody;
-
-// Canonical definitions live in ./date (single source of truth).
-export type { ErrorCode, ValidateDateResult };
+// Canonical definition lives in ./date (single source of truth).
+export type { ErrorCode };
 
 /**
  * First APOD date — used as a hint for the minimum valid date input.
@@ -42,14 +35,13 @@ export type { ErrorCode, ValidateDateResult };
  */
 export const MIN_APOD_DATE = "1995-06-16";
 
-// Centralized date helpers — single source of truth lives in ./date, re-exported here for backwards compat
-// (route.ts and other consumers import from @/lib/astro-types).
+// Centralized date helpers — single source of truth lives in ./date, re-exported
+// here for backwards compat (route.ts and other consumers import from
+// @/lib/astro-types).
 export {
   DATE_REGEX,
   MIN_API_DATE,
-  MIN_YEAR,
   todayUtcString,
-  isPastDate,
   daysDiff,
   validateDate,
   formatDisplayDate,
@@ -76,12 +68,14 @@ const RAW_SEGMENT_RE = /\/raw(?:\/|$)/i;
  * the `raw` pattern is anchored to a path/query boundary.
  */
 export function isRawOrFits(url: string): boolean {
-  if (FITS_RE.test(url)) return true;
-  if (RAW_EXT_RE.test(url)) return true;
-  if (RAW_PARAM_RE.test(url)) return true;
-  if (RAW_SEGMENT_RE.test(url)) return true;
-  return false;
+  return FITS_RE.test(url) || RAW_EXT_RE.test(url) || RAW_PARAM_RE.test(url) || RAW_SEGMENT_RE.test(url);
 }
+
+const COPYRIGHT_FALLBACK = "NASA/ESA/STScI";
+// Strict: only true mission/campaign descriptors, NOT telescope acronyms that
+// legitimately appear in a credit like "NASA/ESA Hubble" or "JWST Team".
+const MISSION_KEYWORDS = /\b(solar\s+cycle|sdo|aia|lasco|soho|epic|terra|aqua)\b/i;
+const COPYRIGHT_MAX = 120;
 
 /**
  * Normalise the NASA APOD `copyright` field into a clean "credited to" string.
@@ -96,13 +90,6 @@ export function isRawOrFits(url: string): boolean {
  * escapes automatically). Escaping at this layer double-escapes in the UI
  * ("A & B" would render as "A &amp; B").
  */
-const COPYRIGHT_FALLBACK = "NASA/ESA/STScI";
-// Strict: only true mission/campaign descriptors, NOT telescope acronyms that
-// legitimately appear in a credit like "NASA/ESA Hubble" or "JWST Team".
-const MISSION_KEYWORDS =
-  /\b(solar\s+cycle|sdo|aia|lasco|soho|epic|terra|aqua)\b/i;
-const COPYRIGHT_MAX = 120;
-
 export function sanitiseCopyright(raw: string | undefined | null): string {
   if (!raw) return "NASA";
   const trimmed = raw.trim();

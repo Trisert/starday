@@ -18,9 +18,7 @@ import type { ApodResponse, NasaImagesSearchResponse } from "@/lib/nasa-types";
 // dynamic). Keep force-dynamic so Vercel doesn't statically cache today/error.
 export const dynamic = "force-dynamic";
 
-// NASA wire types are imported from @/lib/nasa-types (single source of truth).
-
-// ---------- helpers ----------
+// ---------- constants ----------
 
 // --- Rate limit constants ---
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 60 second sliding window
@@ -33,12 +31,37 @@ const RATE_LIMIT_MAX = 10; // requests per window per IP
 const MAX_MAP_SIZE = 500;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
-type RateLimitEntry = { count: number; resetAt: number };
-const rateLimitMap = new Map<string, RateLimitEntry>();
+// Per-request timeouts — global fallback is 5s, leaving headroom under the
+// 10s Vercel function budget on top of the 4s APOD fetch.
+const APOD_TIMEOUT_MS = 4000;
+const FALLBACK_TIMEOUT_MS = 4500;
+const FALLBACK_GLOBAL_TIMEOUT_MS = 5000;
 
-type CacheEntry = { value: AstroSuccess; expiresAt: number };
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+// ---------- shared types ----------
+
+type RateLimitEntry = { count: number; resetAt: number };
+type CacheEntry = { value: AstroSuccess; expiresAt: number };
+type RateLimitInfo = { limit: number; remaining: number; resetAt: number };
+type RequestCtx = { ip: string; startMs: number };
+
+interface LogFields {
+  ip: string;
+  date: string | null;
+  cacheHit: boolean;
+  upstreamStatus: number | null;
+  fallbackUsed: boolean;
+  latencyMs: number;
+  status: number;
+  code?: ErrorCode;
+  retryAfter?: number;
+}
+
+const rateLimitMap = new Map<string, RateLimitEntry>();
 const cacheMap = new Map<string, CacheEntry>();
+
+// ---------- map helpers ----------
 
 function evictIfNeeded<K, V>(map: Map<K, V>): void {
   // Trim down TO the cap (not a single entry) — one oversized burst would
@@ -77,6 +100,8 @@ if (typeof setInterval !== "undefined") {
   if (typeof anySweep.unref === "function") anySweep.unref();
 }
 
+// ---------- client IP ----------
+
 /**
  * Client IP for rate limiting.
  * Vercel overwrites `x-forwarded-for` with the real client IP and does not
@@ -104,12 +129,9 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-function checkRateLimit(ip: string): {
-  allowed: boolean;
-  limit: number;
-  remaining: number;
-  resetAt: number;
-} {
+// ---------- rate limit ----------
+
+function checkRateLimit(ip: string): { allowed: boolean } & RateLimitInfo {
   const now = Date.now();
   const existing = rateLimitMap.get(ip);
 
@@ -138,16 +160,15 @@ function checkRateLimit(ip: string): {
   };
 }
 
-function applyRateLimitHeaders(
-  res: NextResponse,
-  info: { limit: number; remaining: number; resetAt: number }
-): NextResponse {
+function applyRateLimitHeaders(res: NextResponse, info: RateLimitInfo): NextResponse {
   res.headers.set("X-RateLimit-Limit", String(info.limit));
   res.headers.set("X-RateLimit-Remaining", String(info.remaining));
   const resetInSec = Math.max(0, Math.ceil((info.resetAt - Date.now()) / 1000));
   res.headers.set("X-RateLimit-Reset", String(resetInSec));
   return res;
 }
+
+// ---------- cache ----------
 
 function getCached(date: string): AstroSuccess | null {
   if (date >= todayUtcString()) return null;
@@ -169,7 +190,39 @@ function setCached(date: string, value: AstroSuccess): void {
   evictIfNeeded(cacheMap);
 }
 
-// fetchWithTimeout is imported from @/lib/fetch (AbortSignal.timeout based).
+// ---------- logging ----------
+
+/**
+ * Structured JSON logger. NEVER log the API key: any field literally named
+ * `api_key` / `apiKey` is overwritten with `[REDACTED]`, and any string
+ * containing `api_key=...` in a query string is masked.
+ */
+function logStructured(fields: LogFields): void {
+  const safe: Record<string, unknown> = { ...fields };
+  if ("api_key" in safe) safe.api_key = "[REDACTED]";
+  if ("apiKey" in safe) safe.apiKey = "[REDACTED]";
+  for (const k of Object.keys(safe)) {
+    if (typeof safe[k] === "string" && (safe[k] as string).includes("api_key")) {
+      safe[k] = (safe[k] as string).replace(/api_key=[^&\s]+/gi, "api_key=[REDACTED]");
+    }
+  }
+  console.log(JSON.stringify(safe));
+}
+
+// ---------- response builders ----------
+
+function parseRetryAfter(res: Response): number | undefined {
+  const h = res.headers.get("Retry-After");
+  if (!h) return undefined;
+  const secs = parseInt(h, 10);
+  if (!isNaN(secs)) return secs;
+  // Date form
+  const date = Date.parse(h);
+  if (!isNaN(date)) {
+    return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+  }
+  return undefined;
+}
 
 function getApiKey(): string | null {
   const key = process.env.NASA_API_KEY || (process.env.NODE_ENV === "development" ? "DEMO_KEY" : null);
@@ -188,15 +241,14 @@ function errorJson(
   message: string,
   code: ErrorCode,
   status: number,
-  rateLimit: { limit: number; remaining: number; resetAt: number },
+  rateLimit: RateLimitInfo,
   retryAfterSec?: number
 ): NextResponse<AstroErrorBody> {
   const res = NextResponse.json({ error: message, code }, { status });
   applyRateLimitHeaders(res, rateLimit);
   res.headers.set("Cache-Control", "no-store");
   if (status === 429) {
-    const sec =
-      retryAfterSec ?? Math.max(0, Math.ceil((rateLimit.resetAt - Date.now()) / 1000)) ?? 60;
+    const sec = retryAfterSec ?? Math.max(0, Math.ceil((rateLimit.resetAt - Date.now()) / 1000));
     res.headers.set("Retry-After", String(sec));
   }
   return res as NextResponse<AstroErrorBody>;
@@ -204,7 +256,7 @@ function errorJson(
 
 function successJson(
   body: AstroSuccess,
-  rateLimit: { limit: number; remaining: number; resetAt: number }
+  rateLimit: RateLimitInfo
 ): NextResponse<AstroSuccess> {
   const res = NextResponse.json(body, { status: 200 });
   applyRateLimitHeaders(res, rateLimit);
@@ -212,32 +264,85 @@ function successJson(
   return res as NextResponse<AstroSuccess>;
 }
 
-// Structured JSON logger - NEVER log api_key
-function logStructured(fields: Record<string, unknown>): void {
-  // Redact any api_key accidentally passed
-  const safe: Record<string, unknown> = { ...fields };
-  if ("api_key" in safe) safe.api_key = "[REDACTED]";
-  if ("apiKey" in safe) safe.apiKey = "[REDACTED]";
-  // Ensure url fields don't contain api_key
-  for (const k of Object.keys(safe)) {
-    if (typeof safe[k] === "string" && (safe[k] as string).includes("api_key")) {
-      safe[k] = (safe[k] as string).replace(/api_key=[^&\s]+/gi, "api_key=[REDACTED]");
-    }
-  }
-  console.log(JSON.stringify(safe));
+/**
+ * Build, log, and return a success response. `upstreamStatus` is the status
+ * code we got from NASA APOD (or `null` if we never reached it — cache hit,
+ * config error, fetch threw before getting a response, etc).
+ *
+ * Cache write is skipped when `cacheHit` is true: the value came from the
+ * in-memory cache, so re-inserting it would only bump the TTL.
+ */
+function respondSuccess(
+  ctx: RequestCtx,
+  rateLimit: RateLimitInfo,
+  body: AstroSuccess,
+  opts: { cacheHit: boolean; upstreamStatus: number | null }
+): NextResponse<AstroSuccess> {
+  const res = successJson(body, rateLimit);
+  if (!opts.cacheHit) setCached(body.requestedDate, body);
+  logStructured({
+    ip: ctx.ip,
+    date: body.requestedDate,
+    cacheHit: opts.cacheHit,
+    upstreamStatus: opts.upstreamStatus,
+    fallbackUsed: body.isFallback,
+    latencyMs: Date.now() - ctx.startMs,
+    status: 200,
+  });
+  return res;
 }
 
-function parseRetryAfter(res: Response): number | undefined {
-  const h = res.headers.get("Retry-After");
-  if (!h) return undefined;
-  const secs = parseInt(h, 10);
-  if (!isNaN(secs)) return secs;
-  // Date form
-  const date = Date.parse(h);
-  if (!isNaN(date)) {
-    return Math.max(0, Math.ceil((date - Date.now()) / 1000));
-  }
-  return undefined;
+/**
+ * Build, log, and return an error response.
+ */
+function respondError(
+  ctx: RequestCtx,
+  rateLimit: RateLimitInfo,
+  message: string,
+  code: ErrorCode,
+  status: number,
+  opts: { date: string | null; upstreamStatus: number | null; retryAfter?: number }
+): NextResponse<AstroErrorBody> {
+  const res = errorJson(message, code, status, rateLimit, opts.retryAfter);
+  logStructured({
+    ip: ctx.ip,
+    date: opts.date,
+    cacheHit: false,
+    upstreamStatus: opts.upstreamStatus,
+    fallbackUsed: false,
+    latencyMs: Date.now() - ctx.startMs,
+    status,
+    code,
+    retryAfter: opts.retryAfter,
+  });
+  return res;
+}
+
+/** Build the 429 response triggered by the in-memory rate limiter (pre-handler). */
+function rateLimitedResponse(
+  ctx: { ip: string; startMs: number },
+  rateLimit: RateLimitInfo,
+  dateForLog: string | null
+): NextResponse {
+  const res = NextResponse.json(
+    { error: "Too many requests, try again in a minute.", code: "RATE_LIMIT" as ErrorCode },
+    { status: 429 }
+  );
+  applyRateLimitHeaders(res, rateLimit);
+  res.headers.set("Cache-Control", "no-store");
+  const retryAfter = Math.max(0, Math.ceil((rateLimit.resetAt - Date.now()) / 1000));
+  res.headers.set("Retry-After", String(retryAfter));
+  logStructured({
+    ip: ctx.ip,
+    date: dateForLog,
+    cacheHit: false,
+    upstreamStatus: null,
+    fallbackUsed: false,
+    latencyMs: Date.now() - ctx.startMs,
+    status: 429,
+    code: "RATE_LIMIT",
+  });
+  return res;
 }
 
 // ---------- fallback logic ----------
@@ -253,13 +358,13 @@ async function fetchFallback(requestedDate: string): Promise<AstroSuccess | null
   // Global timeout 5s for the whole fallback. Combined with the 4s APOD
   // budget below, worst-case wall time stays under the 10s Vercel limit.
   const globalController = new AbortController();
-  const globalTimer = setTimeout(() => globalController.abort(), 5000);
+  const globalTimer = setTimeout(() => globalController.abort(), FALLBACK_GLOBAL_TIMEOUT_MS);
 
   let results: PromiseSettledResult<Response>[];
   try {
     results = await Promise.allSettled(
       urls.map((url) =>
-        fetchWithTimeout(url, { cache: "no-store", signal: globalController.signal }, 4500)
+        fetchWithTimeout(url, { cache: "no-store", signal: globalController.signal }, FALLBACK_TIMEOUT_MS)
       )
     );
   } catch {
@@ -272,14 +377,9 @@ async function fetchFallback(requestedDate: string): Promise<AstroSuccess | null
   for (const r of results) {
     if (r.status !== "fulfilled") continue;
     const res = r.value;
-    // Respect Retry-After on 429 - skip this source
-    if (res.status === 429) {
-      const ra = parseRetryAfter(res);
-      // log respect (no retry within global window)
-      void ra;
-      continue;
-    }
-    if (!res.ok) continue;
+    // 429 from a fallback source means NASA told us to back off — skip it
+    // rather than retrying inside the global 5s budget.
+    if (res.status === 429 || !res.ok) continue;
     try {
       const data = (await res.json()) as NasaImagesSearchResponse;
       if (data.collection?.items?.length) allItems = allItems.concat(data.collection.items);
@@ -345,54 +445,31 @@ async function fetchFallback(requestedDate: string): Promise<AstroSuccess | null
 
 async function handleAstro(
   requestedDate: string,
-  rateLimit: { limit: number; remaining: number; resetAt: number },
-  ctx: { ip: string; startMs: number; cacheHit: boolean; fallbackUsed: boolean; upstreamStatus?: number }
+  rateLimit: RateLimitInfo,
+  ctx: RequestCtx
 ): Promise<NextResponse<AstroSuccess | AstroErrorBody>> {
   const v = validateDate(requestedDate);
   if (!v.valid) {
-    const res = errorJson(v.error, v.code, 400, rateLimit);
-    logStructured({
-      ip: ctx.ip,
+    return respondError(ctx, rateLimit, v.error, v.code, 400, {
       date: requestedDate,
-      cacheHit: false,
       upstreamStatus: null,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 400,
-      code: v.code,
     });
-    return res;
   }
 
   const cached = getCached(requestedDate);
   if (cached) {
-    const res = successJson(cached, rateLimit);
-    logStructured({
-      ip: ctx.ip,
-      date: requestedDate,
+    return respondSuccess(ctx, rateLimit, cached, {
       cacheHit: true,
       upstreamStatus: null,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 200,
     });
-    return res;
   }
 
   const key = getApiKey();
   if (!key) {
-    const res = errorJson("Server misconfiguration. Contact the administrator.", "CONFIG_ERROR", 500, rateLimit);
-    logStructured({
-      ip: ctx.ip,
+    return respondError(ctx, rateLimit, "Server misconfiguration. Contact the administrator.", "CONFIG_ERROR", 500, {
       date: requestedDate,
-      cacheHit: false,
       upstreamStatus: null,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 500,
-      code: "CONFIG_ERROR",
     });
-    return res;
   }
 
   const apodUrl = `https://api.nasa.gov/planetary/apod?date=${requestedDate}&api_key=${key}&thumbs=false`;
@@ -400,68 +477,26 @@ async function handleAstro(
   let apodRes: Response;
   let upstreamStatus: number | undefined;
   try {
-    apodRes = await fetchWithTimeout(apodUrl, { cache: "no-store" }, 4000);
+    apodRes = await fetchWithTimeout(apodUrl, { cache: "no-store" }, APOD_TIMEOUT_MS);
     upstreamStatus = apodRes.status;
   } catch {
     const fb = await fetchFallback(requestedDate);
-    if (fb) {
-      setCached(requestedDate, fb);
-      const res = successJson(fb, rateLimit);
-      logStructured({
-        ip: ctx.ip,
-        date: requestedDate,
-        cacheHit: false,
-        upstreamStatus: null,
-        fallbackUsed: true,
-        latencyMs: Date.now() - ctx.startMs,
-        status: 200,
-      });
-      return res;
-    }
-    const res = errorJson("NASA service temporarily unavailable. Try again later.", "UPSTREAM_ERROR", 502, rateLimit);
-    logStructured({
-      ip: ctx.ip,
+    if (fb) return respondSuccess(ctx, rateLimit, fb, { cacheHit: false, upstreamStatus: null });
+    return respondError(ctx, rateLimit, "NASA service temporarily unavailable. Try again later.", "UPSTREAM_ERROR", 502, {
       date: requestedDate,
-      cacheHit: false,
       upstreamStatus: null,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 502,
-      code: "UPSTREAM_ERROR",
     });
-    return res;
   }
 
   if (apodRes.status === 429 || apodRes.status === 403) {
     const retryAfter = parseRetryAfter(apodRes);
     const fb = await fetchFallback(requestedDate);
-    if (fb) {
-      setCached(requestedDate, fb);
-      const res = successJson(fb, rateLimit);
-      logStructured({
-        ip: ctx.ip,
-        date: requestedDate,
-        cacheHit: false,
-        upstreamStatus,
-        fallbackUsed: true,
-        latencyMs: Date.now() - ctx.startMs,
-        status: 200,
-      });
-      return res;
-    }
-    const res = errorJson("NASA rate limit reached. Try again in a few minutes.", "RATE_LIMIT", 429, rateLimit, retryAfter);
-    logStructured({
-      ip: ctx.ip,
+    if (fb) return respondSuccess(ctx, rateLimit, fb, { cacheHit: false, upstreamStatus: upstreamStatus ?? null });
+    return respondError(ctx, rateLimit, "NASA rate limit reached. Try again in a few minutes.", "RATE_LIMIT", 429, {
       date: requestedDate,
-      cacheHit: false,
-      upstreamStatus,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 429,
-      code: "RATE_LIMIT",
+      upstreamStatus: upstreamStatus ?? null,
       retryAfter,
     });
-    return res;
   }
 
   if (apodRes.status === 400) {
@@ -472,61 +507,24 @@ async function handleAstro(
       // ignore
     }
     if (body?.msg || body?.code === 400) {
-      const res = errorJson(body.msg ?? "Invalid date for APOD.", "INVALID_DATE", 400, rateLimit);
-      logStructured({
-        ip: ctx.ip,
+      return respondError(ctx, rateLimit, body.msg ?? "Invalid date for APOD.", "INVALID_DATE", 400, {
         date: requestedDate,
-        cacheHit: false,
-        upstreamStatus,
-        fallbackUsed: false,
-        latencyMs: Date.now() - ctx.startMs,
-        status: 400,
-        code: "INVALID_DATE",
+        upstreamStatus: upstreamStatus ?? null,
       });
-      return res;
     }
-    const res = errorJson("Invalid request.", "INVALID_DATE", 400, rateLimit);
-    logStructured({
-      ip: ctx.ip,
+    return respondError(ctx, rateLimit, "Invalid request.", "INVALID_DATE", 400, {
       date: requestedDate,
-      cacheHit: false,
-      upstreamStatus,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 400,
-      code: "INVALID_DATE",
+      upstreamStatus: upstreamStatus ?? null,
     });
-    return res;
   }
 
   if (!apodRes.ok) {
     const fb = await fetchFallback(requestedDate);
-    if (fb) {
-      setCached(requestedDate, fb);
-      const res = successJson(fb, rateLimit);
-      logStructured({
-        ip: ctx.ip,
-        date: requestedDate,
-        cacheHit: false,
-        upstreamStatus,
-        fallbackUsed: true,
-        latencyMs: Date.now() - ctx.startMs,
-        status: 200,
-      });
-      return res;
-    }
-    const res = errorJson("Error fetching the NASA image.", "UPSTREAM_ERROR", 502, rateLimit);
-    logStructured({
-      ip: ctx.ip,
+    if (fb) return respondSuccess(ctx, rateLimit, fb, { cacheHit: false, upstreamStatus: upstreamStatus ?? null });
+    return respondError(ctx, rateLimit, "Error fetching the NASA image.", "UPSTREAM_ERROR", 502, {
       date: requestedDate,
-      cacheHit: false,
-      upstreamStatus,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 502,
-      code: "UPSTREAM_ERROR",
+      upstreamStatus: upstreamStatus ?? null,
     });
-    return res;
   }
 
   let apod: ApodResponse;
@@ -534,39 +532,16 @@ async function handleAstro(
     apod = (await apodRes.json()) as ApodResponse;
   } catch {
     const fb = await fetchFallback(requestedDate);
-    if (fb) {
-      setCached(requestedDate, fb);
-      const res = successJson(fb, rateLimit);
-      logStructured({
-        ip: ctx.ip,
-        date: requestedDate,
-        cacheHit: false,
-        upstreamStatus,
-        fallbackUsed: true,
-        latencyMs: Date.now() - ctx.startMs,
-        status: 200,
-      });
-      return res;
-    }
-    const res = errorJson("Invalid NASA response.", "UPSTREAM_ERROR", 502, rateLimit);
-    logStructured({
-      ip: ctx.ip,
+    if (fb) return respondSuccess(ctx, rateLimit, fb, { cacheHit: false, upstreamStatus: upstreamStatus ?? null });
+    return respondError(ctx, rateLimit, "Invalid NASA response.", "UPSTREAM_ERROR", 502, {
       date: requestedDate,
-      cacheHit: false,
-      upstreamStatus,
-      fallbackUsed: false,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 502,
-      code: "UPSTREAM_ERROR",
+      upstreamStatus: upstreamStatus ?? null,
     });
-    return res;
   }
 
   if (apod.media_type === "image" && (apod.hdurl || apod.url)) {
     const imageUrl = apod.hdurl || apod.url!;
-    if (isRawOrFits(imageUrl)) {
-      // tratta come non-image -> fallback
-    } else {
+    if (!isRawOrFits(imageUrl)) {
       const result: AstroSuccess = {
         imageUrl,
         title: apod.title,
@@ -577,49 +552,18 @@ async function handleAstro(
         isFallback: false,
         requestedDate,
       };
-      setCached(requestedDate, result);
-      const res = successJson(result, rateLimit);
-      logStructured({
-        ip: ctx.ip,
-        date: requestedDate,
-        cacheHit: false,
-        upstreamStatus,
-        fallbackUsed: false,
-        latencyMs: Date.now() - ctx.startMs,
-        status: 200,
-      });
-      return res;
+      return respondSuccess(ctx, rateLimit, result, { cacheHit: false, upstreamStatus: upstreamStatus ?? null });
     }
+    // raw/FITS URL: fall through to the fallback path below
   }
 
   const fb = await fetchFallback(requestedDate);
-  if (fb) {
-    setCached(requestedDate, fb);
-    const res = successJson(fb, rateLimit);
-    logStructured({
-      ip: ctx.ip,
-      date: requestedDate,
-      cacheHit: false,
-      upstreamStatus,
-      fallbackUsed: true,
-      latencyMs: Date.now() - ctx.startMs,
-      status: 200,
-    });
-    return res;
-  }
+  if (fb) return respondSuccess(ctx, rateLimit, fb, { cacheHit: false, upstreamStatus: upstreamStatus ?? null });
 
-  const res = errorJson("No image found for this date.", "NOT_FOUND", 404, rateLimit);
-  logStructured({
-    ip: ctx.ip,
+  return respondError(ctx, rateLimit, "No image found for this date.", "NOT_FOUND", 404, {
     date: requestedDate,
-    cacheHit: false,
-    upstreamStatus,
-    fallbackUsed: false,
-    latencyMs: Date.now() - ctx.startMs,
-    status: 404,
-    code: "NOT_FOUND",
+    upstreamStatus: upstreamStatus ?? null,
   });
-  return res;
 }
 
 // ---------- exports GET / POST ----------
@@ -628,56 +572,39 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const startMs = Date.now();
   const ip = getClientIp(request);
   const rateLimit = checkRateLimit(ip);
-
   if (!rateLimit.allowed) {
-    const res = NextResponse.json(
-      { error: "Too many requests, try again in a minute.", code: "RATE_LIMIT" },
-      { status: 429 }
-    );
-    applyRateLimitHeaders(res, rateLimit);
-    res.headers.set("Cache-Control", "no-store");
-    const retryAfter = Math.max(0, Math.ceil((rateLimit.resetAt - Date.now()) / 1000));
-    res.headers.set("Retry-After", String(retryAfter));
-    logStructured({ ip, date: request.nextUrl.searchParams.get("date") ?? null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 429, code: "RATE_LIMIT" });
-    return res;
+    return rateLimitedResponse({ ip, startMs }, rateLimit, request.nextUrl.searchParams.get("date"));
   }
-
+  const ctx: RequestCtx = { ip, startMs };
   const date = request.nextUrl.searchParams.get("date") ?? undefined;
   if (!date) {
-    const res = errorJson("Missing 'date' parameter. Use ?date=YYYY-MM-DD.", "INVALID_DATE", 400, rateLimit);
-    logStructured({ ip, date: null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 400, code: "INVALID_DATE" });
-    return res;
+    return respondError(ctx, rateLimit, "Missing 'date' parameter. Use ?date=YYYY-MM-DD.", "INVALID_DATE", 400, {
+      date: null,
+      upstreamStatus: null,
+    });
   }
-  return handleAstro(date, rateLimit, { ip, startMs, cacheHit: false, fallbackUsed: false });
+  return handleAstro(date, rateLimit, ctx);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startMs = Date.now();
   const ip = getClientIp(request);
   const rateLimit = checkRateLimit(ip);
-
   if (!rateLimit.allowed) {
-    const res = NextResponse.json(
-      { error: "Too many requests, try again in a minute.", code: "RATE_LIMIT" },
-      { status: 429 }
-    );
-    applyRateLimitHeaders(res, rateLimit);
-    res.headers.set("Cache-Control", "no-store");
-    const retryAfter = Math.max(0, Math.ceil((rateLimit.resetAt - Date.now()) / 1000));
-    res.headers.set("Retry-After", String(retryAfter));
-    logStructured({ ip, date: null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 429, code: "RATE_LIMIT" });
-    return res;
+    return rateLimitedResponse({ ip, startMs }, rateLimit, null);
   }
+  const ctx: RequestCtx = { ip, startMs };
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
     const qp = request.nextUrl.searchParams.get("date");
-    if (qp) return handleAstro(qp, rateLimit, { ip, startMs, cacheHit: false, fallbackUsed: false });
-    const res = errorJson("Invalid JSON body. Send { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, rateLimit);
-    logStructured({ ip, date: null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 400, code: "INVALID_DATE" });
-    return res;
+    if (qp) return handleAstro(qp, rateLimit, ctx);
+    return respondError(ctx, rateLimit, "Invalid JSON body. Send { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, {
+      date: null,
+      upstreamStatus: null,
+    });
   }
 
   const date =
@@ -686,10 +613,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     undefined;
 
   if (typeof date !== "string" || !date) {
-    const res = errorJson("Missing 'date' field. Send { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, rateLimit);
-    logStructured({ ip, date: null, cacheHit: false, upstreamStatus: null, fallbackUsed: false, latencyMs: Date.now() - startMs, status: 400, code: "INVALID_DATE" });
-    return res;
+    return respondError(ctx, rateLimit, "Missing 'date' field. Send { date: 'YYYY-MM-DD' }.", "INVALID_DATE", 400, {
+      date: null,
+      upstreamStatus: null,
+    });
   }
 
-  return handleAstro(date, rateLimit, { ip, startMs, cacheHit: false, fallbackUsed: false });
+  return handleAstro(date, rateLimit, ctx);
 }

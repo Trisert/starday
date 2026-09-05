@@ -27,6 +27,15 @@ export function resolveOgDate(raw: string | null): string {
   return parseOgDate(raw) ?? todayUtcString();
 }
 
+/** 32-bit FNV-1a hash of a string. Used to seed the deterministic star field. */
+export function hashSeed(str: string): number {
+  let h = 0x811c9dc5; // FNV offset basis
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 0x01000193); // FNV prime
+  }
+  return h >>> 0;
+}
+
 /**
  * Deterministic pseudo-random number generator (mulberry32) so the star field
  * stays stable across re-renders for the same date.
@@ -42,14 +51,6 @@ export function makeRng(seed: number): () => number {
   };
 }
 
-export function hashSeed(str: string): number {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(h ^ str.charCodeAt(i), 16777619);
-  }
-  return h >>> 0;
-}
-
 export interface Star {
   readonly x: number;
   readonly y: number;
@@ -58,18 +59,29 @@ export interface Star {
   readonly tint: string;
 }
 
+/** Star-size bracket boundaries, in roll order. */
+const SIZE_ROLL_BIG = 0.95;
+const SIZE_ROLL_MID = 0.8;
+const STAR_BIG = 3.5;
+const STAR_MID = 2.4;
+const STAR_SMALL = 1.4;
+const STAR_TINT_BLUE = 0.92;
+const STAR_TINT_GOLD = 0.85;
+const STAR_OPACITY_MIN = 0.3;
+const STAR_OPACITY_RANGE = 0.7;
+
 /** Deterministic 110-star field for a given date string. */
 export function buildStars(date: string): Star[] {
   const rng = makeRng(hashSeed(date));
-  const stars: Star[] = [];
+  const stars: Star[] = new Array(STAR_COUNT);
   for (let i = 0; i < STAR_COUNT; i++) {
     const x = Math.floor(rng() * OG_WIDTH);
     const y = Math.floor(rng() * OG_HEIGHT);
     const sizeRoll = rng();
-    const size = sizeRoll > 0.95 ? 3.5 : sizeRoll > 0.8 ? 2.4 : 1.4;
-    const opacity = 0.3 + rng() * 0.7;
-    const tint = rng() > 0.92 ? "#bfdbfe" : rng() > 0.85 ? "#fde68a" : "#ffffff";
-    stars.push({ x, y, size, opacity, tint });
+    const size = sizeRoll > SIZE_ROLL_BIG ? STAR_BIG : sizeRoll > SIZE_ROLL_MID ? STAR_MID : STAR_SMALL;
+    const opacity = STAR_OPACITY_MIN + rng() * STAR_OPACITY_RANGE;
+    const tint = rng() > STAR_TINT_BLUE ? "#bfdbfe" : rng() > STAR_TINT_GOLD ? "#fde68a" : "#ffffff";
+    stars[i] = { x, y, size, opacity, tint };
   }
   return stars;
 }

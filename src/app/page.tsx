@@ -3,19 +3,12 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Image from "next/image";
 import type { AstroSuccess, AstroErrorBody } from "@/lib/astro-types";
-import { MIN_API_DATE as MIN_DATE } from "@/lib/astro-types";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatDateEN(iso: string): string {
-  return new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
+import {
+  DATE_REGEX,
+  MIN_API_DATE as MIN_DATE,
+  todayUtcString as todayISO,
+  formatDisplayDate as formatDateEN,
+} from "@/lib/astro-types";
 
 function mapErrorMessage(status: number, body: AstroErrorBody | null, date: string): string {
   if (body?.error) {
@@ -42,7 +35,7 @@ function initialDateFromUrl(): string {
     if (typeof window === "undefined") return "";
     const params = new URLSearchParams(window.location.search);
     const d = params.get("date");
-    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    if (d && DATE_REGEX.test(d)) {
       const todayStr = todayISO();
       if (d >= MIN_DATE && d <= todayStr) return d;
     }

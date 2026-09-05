@@ -4,10 +4,6 @@
 /** Strict YYYY-MM-DD regex. */
 export const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Minimum year for APOD archive (1995). Informational: marks the APOD
- * coverage start, not a validation cutoff (see MIN_API_DATE). */
-export const MIN_YEAR = 1995;
-
 /** Earliest date the API serves (YYYY-MM-DD). Earlier years are rejected to
  * avoid useless NASA Image Library queries (e.g. `year_start=0000`).
  * Single source of truth for the API date floor — the UI imports this. */
@@ -17,7 +13,7 @@ export const MIN_API_DATE = "1900-01-01";
 export type ErrorCode = "INVALID_DATE" | "RATE_LIMIT" | "NOT_FOUND" | "UPSTREAM_ERROR" | "CONFIG_ERROR";
 
 /** Result of validateDate. */
-export type ValidateDateResult =
+type ValidateDateResult =
   | { valid: true; date: string }
   | { valid: false; error: string; code: ErrorCode };
 
@@ -46,20 +42,12 @@ export function todayUtcString(): string {
 }
 
 /**
- * True if the given YYYY-MM-DD string is strictly before today (UTC).
- * Returns false for today and future dates.
- */
-export function isPastDate(date: string): boolean {
-  return date < todayUtcString();
-}
-
-/**
  * Validate a YYYY-MM-DD date string.
  * - Format must match YYYY-MM-DD
  * - Must be a real calendar date
  * - Must not be in the future (relative to UTC today)
- * Dates before the APOD archive start are accepted (fallback path handles
- * them); only dates before MIN_API_DATE are rejected.
+ * - Must not predate MIN_API_DATE (otherwise NASA Image Library would be
+ *   queried with absurd `year_start` values).
  */
 export function validateDate(date: string): ValidateDateResult {
   if (!DATE_REGEX.test(date)) {
@@ -74,11 +62,8 @@ export function validateDate(date: string): ValidateDateResult {
     return { valid: false, error: "Invalid date.", code: "INVALID_DATE" };
   }
   // Sanity guard against absurd years (e.g. 0000/9999 would produce useless
-  // `year_start=0000` NASA Image Library queries). MIN_YEAR (1995) stays
-  // informational: it marks the APOD archive start, not a cutoff —
-  // pre-1995 dates remain valid here and are served via the fallback path.
-  const year = Number(date.slice(0, 4));
-  if (!Number.isFinite(year) || date < MIN_API_DATE) {
+  // `year_start=0000` NASA Image Library queries).
+  if (date < MIN_API_DATE) {
     return {
       valid: false,
       error: "Invalid date. Year must be 1900 or later.",

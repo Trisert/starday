@@ -193,9 +193,9 @@ describe("daysDiff", () => {
   });
 
   it("returns 10592 days for 1995-06-16 to 2024-06-15 (29y, 7 leap days)", () => {
-      // 29 * 365 = 10585 + leap days in (1996, 2000, 2004, 2008, 2012, 2016, 2020) = 7 → 10592
-      expect(daysDiff("1995-06-16", "2024-06-15")).toBe(10592);
-    });
+    // 29 * 365 = 10585 + leap days in (1996, 2000, 2004, 2008, 2012, 2016, 2020) = 7 → 10592
+    expect(daysDiff("1995-06-16", "2024-06-15")).toBe(10592);
+  });
 });
 
 describe("isRawOrFits", () => {
@@ -233,9 +233,7 @@ describe("isRawOrFits", () => {
     });
 
     it("matches raw= in the middle of a query", () => {
-      expect(isRawOrFits("https://example.com/image.jpg?foo=bar&raw=true&baz=qux")).toBe(
-        true
-      );
+      expect(isRawOrFits("https://example.com/image.jpg?foo=bar&raw=true&baz=qux")).toBe(true);
     });
 
     it("matches .raw extension", () => {

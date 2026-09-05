@@ -24,6 +24,16 @@ describe("og-helpers", () => {
     expect(a).toEqual(b);
   });
 
+  it("buildStars(\"2024-01-15\")[0] pinned coordinates (RNG draw order: x, y, sizeRoll, opacity, tint)", () => {
+    expect(buildStars("2024-01-15")[0]).toEqual({
+      x: 348,
+      y: 200,
+      size: 1.4,
+      opacity: 0.8473368444480001,
+      tint: "#fde68a",
+    });
+  });
+
   it("buildStars varies by date and stays in canvas bounds", () => {
     const stars = buildStars("1995-06-16");
     expect(stars).toHaveLength(110);
