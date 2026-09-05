@@ -4,10 +4,11 @@
 /** Strict YYYY-MM-DD regex. */
 export const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Earliest date the API serves (YYYY-MM-DD). Earlier years are rejected to
- * avoid useless NASA Image Library queries (e.g. `year_start=0000`).
- * Single source of truth for the API date floor — the UI imports this. */
-export const MIN_API_DATE = "1900-01-01";
+/** Earliest date the API serves (YYYY-MM-DD): Sputnik 1, start of the space
+ * age. Showing a "birthday photo" for earlier dates would be meaningless —
+ * no space photography existed. Single source of truth for the API date
+ * floor — the UI imports this. */
+export const MIN_API_DATE = "1957-10-04";
 
 /** Stable error codes (canonical definition — re-exported by astro-types). */
 export type ErrorCode = "INVALID_DATE" | "RATE_LIMIT" | "NOT_FOUND" | "UPSTREAM_ERROR" | "CONFIG_ERROR";
@@ -66,7 +67,7 @@ export function validateDate(date: string): ValidateDateResult {
   if (date < MIN_API_DATE) {
     return {
       valid: false,
-      error: "Invalid date. Year must be 1900 or later.",
+      error: "Invalid date. Must be 10/04/1957 or later (start of the space age).",
       code: "INVALID_DATE",
     };
   }

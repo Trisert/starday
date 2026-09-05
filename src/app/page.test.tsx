@@ -34,12 +34,12 @@ describe("Home page", () => {
     render(<Home />);
     const input = screen.getByLabelText(/your birthdate/i) as HTMLInputElement;
     expect(input).toBeInTheDocument();
-    expect(input.min).toBe("1900-01-01");
+    expect(input.min).toBe("1957-10-04");
     expect(input.max).toBe("2024-06-15");
     expect(input.required).toBe(true);
     const button = screen.getByRole("button", { name: /show my photo/i });
     expect(button).toBeDisabled();
-    expect(screen.getByText(/Min 01\/01\/1900 — Max today/i)).toBeInTheDocument();
+    expect(screen.getByText(/Min 10\/04\/1957 — Max today/i)).toBeInTheDocument();
   });
 
   it("shows validationError for future date and keeps button disabled", () => {

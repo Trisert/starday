@@ -24,7 +24,7 @@ function mapErrorMessage(status: number, body: AstroErrorBody | null, date: stri
   if (status >= 500) return "NASA service temporarily unavailable. Try again later.";
   // client-side validation fallback
   if (date > todayISO()) return "You cannot pick a future date.";
-  if (date < MIN_DATE) return "Hubble has been in orbit since 1990, but the archive starts on 01/01/1900.";
+  if (date < MIN_DATE) return "No space photos exist before 10/04/1957 (Sputnik 1).";
   return "Something went wrong. Try again.";
 }
 
@@ -57,7 +57,7 @@ export default function Home() {
   const validationError = useMemo(() => {
     if (!date) return null;
     if (date > today) return "Date cannot be in the future.";
-    if (date < MIN_DATE) return "Date must be from 01/01/1900 onwards.";
+    if (date < MIN_DATE) return "Date must be from 10/04/1957 onwards (start of the space age).";
     return null;
   }, [date, today]);
 
@@ -72,7 +72,7 @@ export default function Home() {
       return;
     }
     if (targetDate < MIN_DATE) {
-      setError("Date must be from 01/01/1900 onwards.");
+      setError("Date must be from 10/04/1957 onwards (start of the space age).");
       return;
     }
 
@@ -225,7 +225,7 @@ export default function Home() {
                   className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-700/50 transition"
                 />
                 <p id="date-hint" className="mt-2 text-xs text-zinc-400">
-                  Min 01/01/1900 — Max today ({formatDateEN(today)})
+                  Min 10/04/1957 — Max today ({formatDateEN(today)})
                 </p>
               </div>
 
@@ -386,7 +386,7 @@ export default function Home() {
         <p className="mt-8 text-center text-xs leading-5 text-zinc-500">
           Data from NASA APOD &amp; NASA Image Library. No API key exposed to the client.
           <br />
-          Hubble in orbit since 1990 · APOD since 06/16/1995 · JWST since 2022.
+          Space age since 1957 · Hubble since 1990 · APOD since 06/16/1995 · JWST since 2022.
         </p>
       </main>
 

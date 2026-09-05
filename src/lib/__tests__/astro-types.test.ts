@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   MIN_APOD_DATE,
+  MIN_API_DATE,
   DATE_REGEX,
   validateDate,
   daysDiff,
@@ -111,6 +112,22 @@ describe("validateDate", () => {
     const r = validateDate("2023-02-29");
     expect(r.valid).toBe(false);
     if (!r.valid) expect(r.code).toBe("INVALID_DATE");
+  });
+
+  it("enforces the space-age floor (Sputnik 1, 1957-10-04)", () => {
+    const tooEarly = validateDate("1957-10-03");
+    expect(tooEarly.valid).toBe(false);
+    if (!tooEarly.valid) {
+      expect(tooEarly.code).toBe("INVALID_DATE");
+      expect(tooEarly.error).toMatch(/space age/i);
+    }
+    const ancient = validateDate("1900-01-01");
+    expect(ancient.valid).toBe(false);
+    const floor = validateDate(MIN_API_DATE);
+    expect(floor.valid).toBe(true);
+    if (floor.valid) expect(floor.date).toBe("1957-10-04");
+    // Apollo era stays servable via fallback
+    expect(validateDate("1969-07-20").valid).toBe(true);
   });
 
   it("accepts Feb 29 in a leap year", () => {
