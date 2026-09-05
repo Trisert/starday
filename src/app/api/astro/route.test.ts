@@ -101,6 +101,47 @@ describe("GET /api/astro - P0 critical", () => {
     expect(json.code).toBe("INVALID_DATE");
   });
 
+  it("APOD 400 out-of-range (pre-1995) -> fallback 200", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes("apod")) {
+        return mockApodResponse(
+          { msg: "Date must be between Jun 16, 1995 and Jun 15, 2024.", code: 400 },
+          400
+        );
+      }
+      return mockFallbackResponse([fallbackItem({ date_created: "1969-07-20T00:00:00Z" })]);
+    });
+    vi.stubGlobal("fetch", fetchMock as any);
+    const { GET } = await import("./route");
+    const req = makeNextRequest("/api/astro?date=1969-07-20", { ip: nextIp() });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json: any = await res.json();
+    expect(json.isFallback).toBe(true);
+    expect(json.actualDate).toBe("1969-07-20");
+  });
+
+  it("APOD 400 out-of-range + empty fallback -> 400", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes("apod")) {
+        return mockApodResponse(
+          { msg: "Date must be between Jun 16, 1995 and Jun 15, 2024.", code: 400 },
+          400
+        );
+      }
+      return mockFallbackResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock as any);
+    const { GET } = await import("./route");
+    // NOTE: different date from the previous test — the module-level 24h
+    // cache persists across tests in this file.
+    const req = makeNextRequest("/api/astro?date=1969-07-21", { ip: nextIp() });
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+    const json: any = await res.json();
+    expect(json.code).toBe("INVALID_DATE");
+  });
+
   it("APOD image 200 no fallback", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (String(url).includes("apod")) {

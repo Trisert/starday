@@ -500,6 +500,11 @@ async function handleAstro(
   }
 
   if (apodRes.status === 400) {
+    // Our own validateDate already guarantees a well-formed, in-range date,
+    // so APOD 400 means "outside APOD coverage" (e.g. pre-1995-06-16) —
+    // not a malformed request. Try the Image Library fallback first.
+    const fb = await fetchFallback(requestedDate);
+    if (fb) return respondSuccess(ctx, rateLimit, fb, { cacheHit: false, upstreamStatus: upstreamStatus ?? null });
     let body: ApodResponse | null = null;
     try {
       body = (await apodRes.json()) as ApodResponse;
