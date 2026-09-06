@@ -3,8 +3,162 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* StarDay palette — Linear dark-native + Raycast aurora accents */
+  --color-void: #08090a;
+  --color-panel: #0f1011;
+  --color-raised: #191a1b;
+  --color-ink: #f7f8f8;
+  --color-silver: #d0d6e0;
+  --color-muted: #8a8f98;
+  --color-faint: #62666d;
+  --color-brand: #5e6ad2;
+  --color-accent: #7170ff;
+  --color-accent-hover: #828fff;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--color-void);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(113, 112, 255, 0.35);
+  color: #f7f8f8;
+}
+
+/* Refined focus ring for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Native date picker indicator in dark chrome */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+/* Display headline — Linear-style compression */
+.display-tight {
+  letter-spacing: -0.03em;
+  font-feature-settings: "cv01", "ss03";
+}
+
+/* Aurora headline gradient (Raycast-style punctuation, used once) */
+.text-aurora {
+  background: linear-gradient(100deg, #828fff 0%, #b49bff 45%, #f0a6ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Glass card — subtle white borders on dark, moonlight wireframe */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 24px 64px -24px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Primary CTA — brand indigo with aurora glow */
+.btn-aurora {
+  background: linear-gradient(180deg, #6a76e0 0%, #5e6ad2 100%);
+  box-shadow:
+    0 0 0 1px rgba(130, 143, 255, 0.4),
+    0 8px 32px -8px rgba(94, 106, 210, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.btn-aurora:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow:
+    0 0 0 1px rgba(130, 143, 255, 0.55),
+    0 12px 40px -8px rgba(113, 112, 255, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-aurora:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Result entrance */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise-in {
+  animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Shimmer skeleton */
+@keyframes shimmer-slide {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.04) 30%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.04) 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-slide 1.6s linear infinite;
+}
+
+/* Slow aurora drift */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, -3%, 0) scale(1.08);
+  }
+}
+
+.aurora-drift {
+  animation: aurora-drift 18s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in,
+  .shimmer,
+  .aurora-drift {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
 }

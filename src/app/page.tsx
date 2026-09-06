@@ -3,12 +3,25 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Image from "next/image";
 import type { AstroSuccess, AstroErrorBody } from "@/lib/astro-types";
-import {
-  DATE_REGEX,
-  MIN_API_DATE as MIN_DATE,
-  todayUtcString as todayISO,
-  formatDisplayDate as formatDateEN,
-} from "@/lib/astro-types";
+import { MIN_API_DATE } from "@/lib/astro-types";
+
+const MIN_DATE = MIN_API_DATE;
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDateEN(iso: string): string {
+  try {
+    return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
 
 function mapErrorMessage(status: number, body: AstroErrorBody | null, date: string): string {
   if (body?.error) {
@@ -35,17 +48,83 @@ function initialDateFromUrl(): string {
     if (typeof window === "undefined") return "";
     const params = new URLSearchParams(window.location.search);
     const d = params.get("date");
-    if (d && DATE_REGEX.test(d)) {
-      const todayStr = todayISO();
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      const todayStr = new Date().toISOString().slice(0, 10);
       if (d >= MIN_DATE && d <= todayStr) return d;
     }
   } catch {}
   return "";
 }
 
+/**
+ * Fixed canvas starfield behind the page. Imperative twinkle — no React
+ * state involved. Static frame when the user prefers reduced motion.
+ */
+function Starfield() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let raf = 0;
+    let stars: { x: number; y: number; r: number; p: number; s: number }[] = [];
+
+    const resize = () => {
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      const count = Math.min(220, Math.floor((window.innerWidth * window.innerHeight) / 9000));
+      stars = Array.from({ length: count }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: (Math.random() * 1.1 + 0.3) * dpr,
+        p: Math.random() * Math.PI * 2,
+        s: 0.4 + Math.random() * 1.2,
+      }));
+    };
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const draw = (t: number) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const st of stars) {
+        const tw = reduced ? 0.7 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(st.p + (t / 1000) * st.s));
+        ctx.globalAlpha = tw;
+        ctx.fillStyle = "#e8ecff";
+        ctx.beginPath();
+        ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (!reduced) raf = requestAnimationFrame(draw);
+    };
+
+    resize();
+    draw(0);
+    window.addEventListener("resize", resize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 -z-10 opacity-70"
+    />
+  );
+}
+
 export default function Home() {
   const today = useMemo(() => todayISO(), []);
-  const [date, setDate] = useState(initialDateFromUrl);
+  const [date, setDate] = useState<string>(initialDateFromUrl);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AstroSuccess | null>(null);
@@ -61,7 +140,7 @@ export default function Home() {
     return null;
   }, [date, today]);
 
-  async function fetchData(targetDate: string): Promise<void> {
+  async function fetchData(targetDate: string) {
     setError(null);
     if (!targetDate) {
       setError("Select a date.");
@@ -80,6 +159,7 @@ export default function Home() {
     setData(null);
     try {
       const res = await fetch(`/api/astro?date=${encodeURIComponent(targetDate)}`, {
+        method: "GET",
         headers: { Accept: "application/json" },
       });
 
@@ -93,7 +173,8 @@ export default function Home() {
 
       if (json && typeof json.imageUrl === "string" && typeof json.title === "string") {
         setImgError(null);
-        setData(json as AstroSuccess);
+        const success = json as AstroSuccess;
+        setData(success);
         // deep-link: push history.replaceState
         try {
           const url = new URL(window.location.href);
@@ -118,7 +199,7 @@ export default function Home() {
     }
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     await fetchData(date);
   }
@@ -131,7 +212,7 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // scroll the result into view and focus it when it arrives
+  // scrollIntoView + focus quando data arriva
   useEffect(() => {
     if (data && resultRef.current) {
       resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -146,6 +227,10 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  function showToast(msg: string) {
+    setToast(msg);
+  }
+
   function getShareUrl(targetDate: string): string {
     try {
       const origin = window.location.origin;
@@ -156,7 +241,7 @@ export default function Home() {
     }
   }
 
-  async function handleShare(): Promise<void> {
+  async function handleShare() {
     if (!data) return;
     const shareUrl = getShareUrl(data.requestedDate);
     if (navigator.share && window.isSecureContext) {
@@ -166,48 +251,56 @@ export default function Home() {
           text: data.caption,
           url: shareUrl,
         });
-        setToast("Shared!");
+        showToast("Shared!");
       } catch {}
     } else if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(shareUrl);
-        setToast("Link copied!");
+        showToast("Link copied!");
       } catch {
-        setToast("Could not copy the link.");
+        showToast("Could not copy the link.");
       }
     } else {
-      setToast("Copy not available in this browser.");
+      showToast("Copy not available in this browser.");
     }
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+    <div className="relative flex min-h-screen flex-col text-zinc-100">
+      <Starfield />
+      {/* Aurora ambience */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="aurora-drift absolute -top-40 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-[#5e6ad2]/20 blur-[140px]" />
+        <div className="aurora-drift absolute top-1/3 -left-40 h-[380px] w-[380px] rounded-full bg-[#a855f7]/10 blur-[120px]" />
+        <div className="aurora-drift absolute -right-40 bottom-0 h-[420px] w-[420px] rounded-full bg-[#ec4899]/10 blur-[130px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_35%,rgba(8,9,10,0.85)_100%)]" />
+      </div>
+
       {/* Header */}
-      <header className="w-full max-w-3xl mx-auto px-4 sm:px-6 pt-10 pb-6">
-        <p className="text-center text-xs tracking-[0.2em] uppercase text-zinc-400 font-medium">
+      <header className="mx-auto w-full max-w-3xl px-4 pt-14 pb-8 sm:px-6 sm:pt-20">
+        <p className="text-center font-mono text-[11px] font-medium tracking-[0.3em] text-[#828fff] uppercase">
           NASA · Hubble · JWST · APOD
         </p>
-        <h1 className="mt-3 text-center text-[28px] sm:text-[34px] font-bold leading-tight tracking-tight text-zinc-50">
-          What photo did Hubble take
-          <br className="hidden sm:block" />
-          <span className="sm:hidden"> </span>
-          on the day you were born?
+        <h1 className="display-tight mt-4 text-center text-[38px] leading-[1.05] font-semibold text-[#f7f8f8] sm:text-[60px]">
+          The universe on
+          <br />
+          the day <span className="text-aurora">you were born</span>
         </h1>
-        <p className="mt-3 text-center text-sm sm:text-[15px] leading-6 text-zinc-400 max-w-xl mx-auto">
-          Enter your birthdate and discover the space
-          telescope image from your day. APOD since 1995, earlier years via the NASA archive.
+        <p className="mx-auto mt-4 max-w-xl text-center text-[15px] leading-7 text-[#8a8f98] sm:text-base">
+          Enter your birthdate and discover the space telescope image from your
+          day. APOD since 1995, earlier years via the NASA archive.
         </p>
       </header>
 
-      <main className="w-full max-w-3xl mx-auto px-4 sm:px-6 pb-12 flex-1">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-14 sm:px-6">
         {/* Card form */}
-        <div className="rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl p-5 sm:p-7">
+        <div className="glass rounded-[20px] p-5 sm:p-7">
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-            <label htmlFor="birthdate" className="text-sm font-medium text-zinc-200">
+            <label htmlFor="birthdate" className="text-sm font-medium text-[#d0d6e0]">
               Your birthdate
             </label>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <div className="flex-1">
                 <input
                   id="birthdate"
@@ -222,9 +315,9 @@ export default function Home() {
                   max={today}
                   required
                   aria-describedby={validationError ? "date-hint date-error" : "date-hint"}
-                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-700/50 transition"
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-[15px] text-zinc-100 transition outline-none placeholder:text-zinc-500 focus:border-[#7170ff]/60 focus:ring-2 focus:ring-[#7170ff]/25"
                 />
-                <p id="date-hint" className="mt-2 text-xs text-zinc-400">
+                <p id="date-hint" className="mt-2 font-mono text-[11px] tracking-wide text-[#62666d]">
                   Min 10/04/1957 — Max today ({formatDateEN(today)})
                 </p>
               </div>
@@ -232,11 +325,11 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={loading || !!validationError || !date}
-                className="inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-semibold text-zinc-900 shadow hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0 sm:self-start min-w-[170px] h-[46px]"
+                className="btn-aurora inline-flex h-[46px] min-w-[170px] shrink-0 items-center justify-center rounded-xl px-6 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40 sm:self-start"
               >
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                     Loading...
                   </span>
                 ) : (
@@ -246,7 +339,7 @@ export default function Home() {
             </div>
 
             {validationError && date && !loading && (
-              <p id="date-error" className="text-sm text-amber-400" role="alert">
+              <p id="date-error" className="text-sm text-amber-300" role="alert">
                 {validationError}
               </p>
             )}
@@ -256,7 +349,7 @@ export default function Home() {
             <div
               id="server-error"
               role="alert"
-              className="mt-5 rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm leading-5 text-red-200"
+              className="mt-5 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm leading-5 text-red-200"
             >
               {error}
               {(error.toLowerCase().includes("429") ||
@@ -271,33 +364,37 @@ export default function Home() {
           {/* Loading skeleton while fetching */}
           {loading && (
             <div
-              className="mt-6 animate-pulse space-y-4"
+              className="mt-6 space-y-4"
               role="status"
               aria-live="polite"
               aria-busy="true"
             >
-              <div className="h-[280px] sm:h-[380px] rounded-xl bg-zinc-800" />
-              <div className="h-6 w-3/4 rounded bg-zinc-800" />
-              <div className="h-4 w-full rounded bg-zinc-800" />
-              <div className="h-4 w-5/6 rounded bg-zinc-800" />
+              <div className="shimmer h-[280px] rounded-xl sm:h-[380px]" />
+              <div className="shimmer h-6 w-3/4 rounded" />
+              <div className="shimmer h-4 w-full rounded" />
+              <div className="shimmer h-4 w-5/6 rounded" />
             </div>
           )}
         </div>
 
-        {/* Result */}
+        {/* Risultato */}
         {data && !loading && (
           <div
             ref={resultRef}
             tabIndex={-1}
-            className="mt-6 rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden shadow-2xl focus:outline-none"
+            className="rise-in glass mt-6 overflow-hidden rounded-[20px] focus:outline-none"
             aria-live="polite"
           >
             {/* Image */}
-            <div className="relative bg-black w-full h-[280px] sm:h-[380px] max-h-[70vh] overflow-hidden">
+            <div className="relative max-h-[70vh] h-[280px] w-full overflow-hidden bg-black sm:h-[420px]">
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(94,106,210,0.18),transparent_70%)]"
+              />
               {imgError ? (
                 <div
                   role="alert"
-                  className="w-full min-h-[280px] sm:min-h-[380px] flex items-center justify-center p-6 text-sm text-red-300 bg-red-950/30"
+                  className="flex min-h-[280px] w-full items-center justify-center bg-red-950/30 p-6 text-sm text-red-300 sm:min-h-[420px]"
                 >
                   {imgError}
                 </div>
@@ -315,67 +412,67 @@ export default function Home() {
               )}
             </div>
 
-            <div className="p-5 sm:p-7 space-y-4">
+            <div className="space-y-4 p-5 sm:p-7">
               {/* Badge + date */}
               <div className="flex flex-wrap items-center gap-2">
                 {data.isFallback ? (
-                  <span className="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/30 px-3 py-1 text-xs font-medium text-amber-300">
-                    Closest image — {data.actualDate.slice(0, 4)}
+                  <span className="inline-flex items-center rounded-full border border-amber-400/25 bg-amber-400/10 px-3 py-1 font-mono text-[11px] font-medium tracking-wide text-amber-300">
+                    ✦ CLOSEST IMAGE — {data.actualDate.slice(0, 4)}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 text-xs font-medium text-emerald-300">
-                    Exact date
+                  <span className="inline-flex items-center rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 font-mono text-[11px] font-medium tracking-wide text-emerald-300">
+                    ● EXACT DATE
                   </span>
                 )}
-                <span className="text-xs text-zinc-400">
+                <span className="text-xs text-[#8a8f98]">
                   Requested: {formatDateEN(data.requestedDate)} · Shown:{" "}
                   {formatDateEN(data.actualDate)}
                 </span>
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-semibold leading-tight text-zinc-50">
+              <h2 className="display-tight text-xl leading-tight font-semibold text-[#f7f8f8] sm:text-2xl">
                 {data.title}
               </h2>
 
-              <p className="text-sm sm:text-[15px] leading-6 text-zinc-300">
+              <p className="text-sm leading-6 text-[#d0d6e0] sm:text-[15px] sm:leading-7">
                 {data.caption}
               </p>
 
-              <div className="flex flex-col gap-1 pt-2 border-t border-zinc-800 text-xs text-zinc-400">
+              <div className="grid grid-cols-1 gap-1 border-t border-white/8 pt-4 font-mono text-[11px] tracking-wide text-[#62666d] sm:grid-cols-2">
                 <span>
-                  Source: <span className="text-zinc-300">{data.source}</span>
+                  SOURCE <span className="text-[#d0d6e0]">{data.source}</span>
                 </span>
                 <span>
-                  Credits: <span className="text-zinc-300">{data.creditedTo}</span>
+                  IMAGE DATE <span className="text-[#d0d6e0]">{data.actualDate}</span>
                 </span>
-                <span>
-                  Image date: <span className="text-zinc-300">{data.actualDate}</span>
+                <span className="sm:col-span-2">
+                  CREDITS <span className="text-[#d0d6e0]">{data.creditedTo}</span>
                 </span>
               </div>
 
-              <div className="pt-3 flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-3 pt-1">
                 <a
                   href={data.imageUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 transition"
+                  className="inline-flex items-center justify-center rounded-xl bg-[#f7f8f8] px-4 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-white"
                 >
-                  Open HD
+                  Open HD ↗
                 </a>
                 <button
                   type="button"
                   onClick={handleShare}
-                  className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition"
+                  className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/10"
                 >
                   Share
                 </button>
               </div>
 
               {data.isFallback && (
-                <p className="text-xs leading-5 text-zinc-400 bg-zinc-950 rounded-xl px-3 py-2 border border-zinc-800">
-                  No APOD image was available for this date
-                  (video or missing data). Showing the closest Hubble/JWST photo
-                  from {data.actualDate.slice(0, 4)} in the NASA Image Library archive.
+                <p className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-xs leading-5 text-[#8a8f98]">
+                  No APOD image was available for this date (video or missing
+                  data). Showing the closest Hubble/JWST photo from{" "}
+                  {data.actualDate.slice(0, 4)} in the NASA Image Library archive.
                 </p>
               )}
             </div>
@@ -383,10 +480,10 @@ export default function Home() {
         )}
 
         {/* Footer info */}
-        <p className="mt-8 text-center text-xs leading-5 text-zinc-500">
-          Data from NASA APOD &amp; NASA Image Library. No API key exposed to the client.
+        <p className="mt-10 text-center font-mono text-[11px] leading-5 tracking-wide text-[#62666d]">
+          DATA FROM NASA APOD &amp; NASA IMAGE LIBRARY · NO API KEY EXPOSED
           <br />
-          Space age since 1957 · Hubble since 1990 · APOD since 06/16/1995 · JWST since 2022.
+          SPACE AGE SINCE 1957 · HUBBLE SINCE 1990 · APOD SINCE 06/16/1995 · JWST SINCE 2022
         </p>
       </main>
 
@@ -395,7 +492,7 @@ export default function Home() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-zinc-900 border border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-100 shadow-2xl"
+          className="glass fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full px-5 py-3 text-sm font-medium text-zinc-100"
         >
           {toast}
         </div>
