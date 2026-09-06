@@ -312,9 +312,11 @@ export default function Home() {
 
         {/* Footer info */}
         <p className="mt-10 text-center font-mono text-[11px] leading-5 tracking-wide text-[#62666d]">
-          DATA FROM NASA APOD &amp; NASA IMAGE LIBRARY · NO API KEY EXPOSED
+          DATA FROM NASA APOD &amp; NASA IMAGE LIBRARY
           <br />
-          SPACE AGE SINCE 1957 · HUBBLE SINCE 1990 · APOD SINCE 06/16/1995 · JWST SINCE 2022
+          IMAGERY © RESPECTIVE OWNERS, SHOWN WITH CREDIT · NOT AFFILIATED WITH NASA
+          <br />
+          NO TRACKING · NO COOKIES · NO ACCOUNTS
         </p>
       </main>
 

@@ -85,3 +85,7 @@ npm start      # avvia build prodotta
 2. Vercel → Add New Project → Import repository
 3. Imposta `NASA_API_KEY` nelle Environment Variables
 4. Deploy — ogni push su `main` redeploya automaticamente
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
