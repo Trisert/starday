@@ -3,6 +3,11 @@ import type { NextRequest } from "next/server";
 import { formatDisplayDate } from "@/lib/date";
 import { buildStars, OG_HEIGHT, OG_WIDTH, ogCacheControl, resolveOgDate } from "@/lib/og-helpers";
 
+// Visual tokens — kept in sync with src/app/globals.css (Archival Dossier).
+// Satori (next/og) does not read CSS vars, so the values are inlined below.
+const COLOR_VOID = "#0b0c0e"; // flat canvas
+const COLOR_BRASS = "#c79a3b"; // single warm accent for details/dividers
+
 // No `export const revalidate`: the card date defaults to today (mutable),
 // so responses must not sit in the route cache for 24h. CDN caching is
 // driven per-response via Cache-Control in ogCacheControl() instead
@@ -27,9 +32,8 @@ export async function GET(request: NextRequest): Promise<Response> {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "#0a0a0a",
-            backgroundImage:
-              "radial-gradient(ellipse at 30% 20%, rgba(59,130,246,0.18) 0%, transparent 55%), radial-gradient(ellipse at 75% 80%, rgba(168,85,247,0.15) 0%, transparent 60%)",
+            backgroundColor: COLOR_VOID,
+            // Flat canvas — no gradient washes (matches Archival Dossier).
             fontFamily: "sans-serif",
             color: "#fafafa",
             position: "relative",
@@ -63,6 +67,7 @@ export async function GET(request: NextRequest): Promise<Response> {
               display: "flex",
               alignItems: "center",
               gap: "10px",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               fontSize: "22px",
               color: "#a1a1aa",
               letterSpacing: "2px",
@@ -74,12 +79,12 @@ export async function GET(request: NextRequest): Promise<Response> {
                 width: "12px",
                 height: "12px",
                 borderRadius: "999px",
-                backgroundColor: "#60a5fa",
-                boxShadow: "0 0 14px rgba(96,165,250,0.9)",
+                backgroundColor: COLOR_BRASS,
+                boxShadow: `0 0 14px rgba(199,154,59,0.55)`,
               }}
             />
             <span style={{ display: "flex", fontWeight: 600 }}>HUBBLE</span>
-            <span style={{ display: "flex", color: "#52525b" }}>·</span>
+            <span style={{ display: "flex", color: COLOR_BRASS }}>·</span>
             <span style={{ display: "flex", fontWeight: 600 }}>JWST</span>
           </div>
 
@@ -94,8 +99,9 @@ export async function GET(request: NextRequest): Promise<Response> {
               gap: "10px",
               padding: "12px 20px",
               borderRadius: "999px",
-              border: "1px solid rgba(255,255,255,0.18)",
-              backgroundColor: "rgba(255,255,255,0.05)",
+              border: `1px solid ${COLOR_BRASS}`,
+              backgroundColor: "transparent",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               fontSize: "20px",
               fontWeight: 700,
               letterSpacing: "3px",
@@ -103,7 +109,7 @@ export async function GET(request: NextRequest): Promise<Response> {
             }}
           >
             <span style={{ display: "flex" }}>NASA</span>
-            <span style={{ display: "flex", color: "#71717a", fontWeight: 400, letterSpacing: "1px" }}>
+            <span style={{ display: "flex", color: COLOR_BRASS, fontWeight: 400, letterSpacing: "1px" }}>
               APOD
             </span>
           </div>
@@ -153,10 +159,7 @@ export async function GET(request: NextRequest): Promise<Response> {
                 fontSize: "60px",
                 fontWeight: 700,
                 lineHeight: 1,
-                backgroundImage:
-                  "linear-gradient(90deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%)",
-                backgroundClip: "text",
-                color: "transparent",
+                color: "#fafafa",
                 marginBottom: "32px",
               }}
             >
@@ -185,6 +188,7 @@ export async function GET(request: NextRequest): Promise<Response> {
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               fontSize: "20px",
               color: "#a1a1aa",
               letterSpacing: "1px",
@@ -193,12 +197,27 @@ export async function GET(request: NextRequest): Promise<Response> {
             <div style={{ display: "flex" }}>starday.vercel.app</div>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <span style={{ display: "flex" }}>ESA</span>
-              <span style={{ display: "flex", color: "#52525b" }}>·</span>
+              <span style={{ display: "flex", color: COLOR_BRASS }}>·</span>
               <span style={{ display: "flex" }}>STScI</span>
-              <span style={{ display: "flex", color: "#52525b" }}>·</span>
+              <span style={{ display: "flex", color: COLOR_BRASS }}>·</span>
               <span style={{ display: "flex" }}>NASA</span>
             </div>
           </div>
+
+          {/* Brass hairline divider above the bottom strip — single warm accent */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: "92px",
+              left: "64px",
+              right: "64px",
+              display: "flex",
+              height: "1px",
+              backgroundColor: COLOR_BRASS,
+              opacity: 0.45,
+              pointerEvents: "none",
+            }}
+          />
 
           {/* Accent border */}
           <div
