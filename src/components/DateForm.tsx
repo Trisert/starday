@@ -65,7 +65,7 @@ export function DateForm({
             max={today}
             required
             aria-describedby={describedBy}
-            className="df-input h-[46px] w-full rounded-none border border-white/15 bg-transparent px-3 text-[15px] text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-[#c79a3b] focus:ring-1 focus:ring-[#c79a3b]/60"
+            className="df-input h-[46px] w-full rounded-none border border-white/15 bg-transparent px-3 text-[15px] text-zinc-100 outline-none transition-[border-color,box-shadow] placeholder:text-zinc-500 focus:border-[#c79a3b] focus:ring-1 focus:ring-[#c79a3b]/60"
           />
           <p
             id="date-hint"
@@ -78,7 +78,7 @@ export function DateForm({
         <button
           type="submit"
           disabled={disabled}
-          className="df-submit inline-flex h-[46px] min-w-[170px] shrink-0 items-center justify-center border border-[#c79a3b] bg-transparent px-6 text-[11px] font-semibold tracking-[0.18em] uppercase text-[#c79a3b] transition-colors hover:bg-[#c79a3b]/10 focus-visible:border-[#c79a3b] focus-visible:ring-2 focus-visible:ring-[#c79a3b]/40 disabled:cursor-not-allowed disabled:opacity-40 sm:self-start"
+          className="df-submit pressable inline-flex h-[46px] min-w-[170px] shrink-0 items-center justify-center border border-[#c79a3b] bg-transparent px-6 text-[11px] font-semibold tracking-[0.18em] uppercase text-[#c79a3b] hover:bg-[#c79a3b]/10 focus-visible:border-[#c79a3b] focus-visible:ring-2 focus-visible:ring-[#c79a3b]/40 disabled:cursor-not-allowed disabled:opacity-40 sm:self-start"
         >
           {loading ? (
             <span className="inline-flex items-center gap-2">
