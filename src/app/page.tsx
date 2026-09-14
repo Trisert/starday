@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { AstroSuccess, AstroErrorBody } from "@/lib/astro-types";
 import { MIN_API_DATE } from "@/lib/astro-types";
+import { resolveSiteUrl } from "@/lib/site";
 import { DateForm } from "@/components/DateForm";
 import PlateResult from "@/components/PlateResult";
 
@@ -199,12 +200,14 @@ export default function Home() {
   }
 
   function getShareUrl(targetDate: string): string {
+    const query = `date=${encodeURIComponent(targetDate)}`;
     try {
       const origin = window.location.origin;
       const pathname = window.location.pathname;
-      return `${origin}${pathname}?date=${encodeURIComponent(targetDate)}`;
+      return `${origin}${pathname}?${query}`;
     } catch {
-      return `https://starday.vercel.app?date=${encodeURIComponent(targetDate)}`;
+      // No window (non-browser context): fall back to the configured site URL.
+      return `${resolveSiteUrl()}/?${query}`;
     }
   }
 

@@ -1,9 +1,8 @@
 import type { MetadataRoute } from "next";
-
-// Override at deploy time with NEXT_PUBLIC_SITE_URL.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://starday.vercel.app";
+import { resolveSiteUrl } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
+  const siteUrl = resolveSiteUrl();
   return {
     rules: [
       {
@@ -12,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: "/api/",
       },
     ],
-    sitemap: `${SITE_URL}/sitemap.xml`,
-    host: SITE_URL,
+    sitemap: `${siteUrl}/sitemap.xml`,
+    host: siteUrl,
   };
 }
