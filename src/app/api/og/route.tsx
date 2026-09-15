@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 import { formatDisplayDate } from "@/lib/date";
 import { buildStars, OG_HEIGHT, OG_WIDTH, ogCacheControl, resolveOgDate } from "@/lib/og-helpers";
+import { siteHost } from "@/lib/site";
 
 // Visual tokens — kept in sync with src/app/globals.css (Archival Dossier).
 // Satori (next/og) does not read CSS vars, so the values are inlined below.
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const date = resolveOgDate(raw);
   const dateLong = formatDisplayDate(date);
   const stars = buildStars(date);
+  const host = siteHost();
 
   try {
     return new ImageResponse(
@@ -194,7 +196,7 @@ export async function GET(request: NextRequest): Promise<Response> {
               letterSpacing: "1px",
             }}
           >
-            <div style={{ display: "flex" }}>starday.vercel.app</div>
+            <div style={{ display: "flex" }}>{host}</div>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <span style={{ display: "flex" }}>ESA</span>
               <span style={{ display: "flex", color: COLOR_BRASS }}>·</span>

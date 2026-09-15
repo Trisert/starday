@@ -199,12 +199,17 @@ export default function Home() {
   }
 
   function getShareUrl(targetDate: string): string {
+    const query = `date=${encodeURIComponent(targetDate)}`;
     try {
       const origin = window.location.origin;
       const pathname = window.location.pathname;
-      return `${origin}${pathname}?date=${encodeURIComponent(targetDate)}`;
+      return `${origin}${pathname}?${query}`;
     } catch {
-      return `https://starday.vercel.app?date=${encodeURIComponent(targetDate)}`;
+      // Defensive: no window, so the absolute host is unknown. A relative URL
+      // stays valid on whatever origin serves the page — resolveSiteUrl() here
+      // would resolve to the localhost fallback in the client bundle, since
+      // VERCEL_* are not exposed to the browser.
+      return `?${query}`;
     }
   }
 

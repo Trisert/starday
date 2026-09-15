@@ -90,4 +90,41 @@ describe("Home page", () => {
     });
     expect(screen.getByText("Caption di test")).toBeInTheDocument();
   });
+
+  it("builds the share link from window.location.origin — no hardcoded domain", async () => {
+    const mockSuccess = {
+      imageUrl: "https://apod.nasa.gov/image/2401/test.jpg",
+      title: "Galassia Test",
+      caption: "Caption di test",
+      source: "NASA APOD",
+      creditedTo: "NASA",
+      actualDate: "2024-01-15",
+      isFallback: false,
+      requestedDate: "2024-01-15",
+    };
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => mockSuccess,
+    } as unknown as Response));
+    vi.stubGlobal("fetch", fetchMock as any);
+
+    // The previous test's fetch leaves ?date= in the shared jsdom location
+    // (deep-link replaceState); reset it so mount does not auto-fetch.
+    window.history.replaceState({}, "", "/");
+
+    render(<Home />);
+    const input = screen.getByLabelText(/your birthdate/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2024-01-15" } });
+    fireEvent.click(screen.getByRole("button", { name: /show my photo/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Galassia Test")).toBeInTheDocument();
+    });
+
+    const shareButton = screen.getByRole("button", { name: /^share$/i });
+    expect(shareButton.getAttribute("data-share-url")).toBe(
+      `${window.location.origin}/?date=2024-01-15`
+    );
+  });
 });
