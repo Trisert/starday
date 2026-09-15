@@ -38,6 +38,7 @@ body {
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
 }
 
 /* Brass selection — tenuto, mai gridato */
@@ -66,7 +67,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font-feature-settings: "cv01", "ss03";
 }
 
-/* Sobri fade — 0.3s, rispetta reduced-motion */
+/* Sobri fade — 280ms, curva ease-out decisa (house style di questo repo: mai
+   ease-in su UI, mai easing deboli di default — la skill apple-design non detta
+   questa regola, §7 copre solo il mirroring della curva nelle transizioni
+   reversibili). Solo transform/opacity = solo GPU (§11). */
 @keyframes fade-soft {
   from {
     opacity: 0;
@@ -79,14 +83,81 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .fade-soft {
-  animation: fade-soft 0.3s ease-out both;
+  animation: fade-soft 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Toast: stessa curva; anima solo l'asse Y — il centramento -50% resta alla
+   utility Tailwind (proprietà `translate`, separata da `transform`: sommarle
+   sposterebbe il toast). */
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-enter {
+  animation: toast-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Feedback pressione istantanea (§1: feedback sul pointer-down, non al release).
+   Solo transform = GPU, 100ms, nessun lock dell'input (§3). */
+.pressable {
+  transition:
+    transform 100ms ease-out,
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out;
+}
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* §14: reduced motion means a gentler equivalent, not zero feedback — the
+   spinner keeps breathing (opacity only, no rotation). */
+@keyframes df-spinner-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fade-soft {
+  .fade-soft,
+  .toast-enter {
     animation: none;
+  }
+  .pressable:active {
+    transform: none;
+  }
+  .df-spinner {
+    animation: df-spinner-breathe 1.6s ease-in-out infinite;
   }
   html {
     scroll-behavior: auto;
+  }
+}
+
+/* Ridotta trasparenza: superfici semi-trasparenti diventano solide (§14) — the
+   hover wash is `bg-[#c79a3b]/10`, here the same tone made opaque over the
+   panel background (#0f1011). */
+@media (prefers-reduced-transparency: reduce) {
+  .df-submit:hover {
+    background: #211d15;
+  }
+}
+
+/* Alto contrasto: hairline + testi secondari rinforzati (§14). */
+@media (prefers-contrast: more) {
+  .df-form,
+  figure {
+    border-color: rgba(255, 255, 255, 0.35);
   }
 }

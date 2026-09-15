@@ -325,7 +325,7 @@ export default function Home() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 border border-white/15 bg-[#0f1011] rounded-full px-5 py-3 text-sm font-medium text-zinc-100"
+          className="toast-enter fixed bottom-6 left-1/2 -translate-x-1/2 border border-white/15 bg-[#0f1011] rounded-full px-5 py-3 text-sm font-medium text-zinc-100"
         >
           {toast}
         </div>

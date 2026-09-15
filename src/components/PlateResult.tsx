@@ -112,7 +112,7 @@ export default function PlateResult({ data, shareUrl, onShare }: PlateResultProp
             href={data.imageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center border border-[#c79a3b]/60 bg-[#c79a3b] px-4 py-2.5 text-sm font-semibold text-[#08090a] transition hover:bg-[#d8a84a]"
+            className="pressable inline-flex items-center justify-center border border-[#c79a3b]/60 bg-[#c79a3b] px-4 py-2.5 text-sm font-semibold text-[#08090a] hover:bg-[#d8a84a]"
           >
             Open HD ↗
           </a>
@@ -120,7 +120,7 @@ export default function PlateResult({ data, shareUrl, onShare }: PlateResultProp
             type="button"
             onClick={onShare}
             data-share-url={shareUrl}
-            className="inline-flex items-center justify-center border border-white/15 bg-transparent px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/5"
+            className="pressable inline-flex items-center justify-center border border-white/15 bg-transparent px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-white/5"
           >
             Share
           </button>
