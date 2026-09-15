@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { AstroSuccess, AstroErrorBody } from "@/lib/astro-types";
 import { MIN_API_DATE } from "@/lib/astro-types";
-import { resolveSiteUrl } from "@/lib/site";
 import { DateForm } from "@/components/DateForm";
 import PlateResult from "@/components/PlateResult";
 
@@ -206,8 +205,11 @@ export default function Home() {
       const pathname = window.location.pathname;
       return `${origin}${pathname}?${query}`;
     } catch {
-      // No window (non-browser context): fall back to the configured site URL.
-      return `${resolveSiteUrl()}/?${query}`;
+      // Defensive: no window, so the absolute host is unknown. A relative URL
+      // stays valid on whatever origin serves the page — resolveSiteUrl() here
+      // would resolve to the localhost fallback in the client bundle, since
+      // VERCEL_* are not exposed to the browser.
+      return `?${query}`;
     }
   }
 
